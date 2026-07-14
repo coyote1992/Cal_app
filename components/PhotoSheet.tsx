@@ -22,6 +22,39 @@ interface Estimate {
 
 type Status = "idle" | "loading" | "done" | "error";
 
+// Phone photos are 3–8 MB, and base64 inflates them by ~33%. Vercel's
+// serverless request-body cap is ~4.5 MB, so a raw camera photo would 413 in
+// production (it only "works" locally because there's no such limit). Downscale
+// in the browser before upload — it also cuts vision-token cost and latency.
+// 1024px on the long edge is plenty for a model to identify food.
+const MAX_DIM = 1024;
+const JPEG_QUALITY = 0.8;
+
+function downscaleToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read that file."));
+    reader.onload = () => {
+      const img = new window.Image();
+      img.onerror = () => reject(new Error("That file isn't a readable image."));
+      img.onload = () => {
+        const scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("Could not process that image."));
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", JPEG_QUALITY));
+      };
+      img.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function PhotoSheet({
   open,
   onClose,
@@ -62,17 +95,20 @@ export default function PhotoSheet({
 
   if (!open) return null;
 
-  function onFile(e: ChangeEvent<HTMLInputElement>) {
+  async function onFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setImage(String(reader.result));
+    try {
+      const dataUrl = await downscaleToDataUrl(file);
+      setImage(dataUrl);
       setStatus("idle");
       setResult(null);
-    };
-    reader.readAsDataURL(file);
+      setError("");
+    } catch (err) {
+      setError((err as Error).message || "Could not read that image.");
+      setStatus("error");
+    }
   }
 
   async function estimate() {
@@ -129,7 +165,9 @@ export default function PhotoSheet({
           </button>
         </div>
 
-        <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden onChange={onFile} />
+        {/* No `capture` attribute: that would force the camera and hide the
+            photo library on mobile. Without it the user gets both options. */}
+        <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
 
         {!image ? (
           <button className="photo-drop" onClick={() => fileRef.current?.click()}>

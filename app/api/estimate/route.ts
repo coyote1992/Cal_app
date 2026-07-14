@@ -6,6 +6,9 @@ import { NextResponse } from "next/server";
 // so "only the LLM needs plugging in" is literally true: add the key.
 
 export const runtime = "nodejs";
+// Vision calls routinely take longer than Vercel's 10s default for serverless
+// functions, which would kill the request mid-flight in production.
+export const maxDuration = 60;
 
 const SYSTEM_PROMPT = `You are a nutrition assistant. From the photo, identify the food and estimate its TOTAL calories.
 Reply with ONLY a JSON object, no prose or markdown, in exactly this shape:
@@ -75,8 +78,14 @@ export async function POST(req: Request) {
 
     if (!resp.ok) {
       const detail = await resp.text().catch(() => "");
+      const hint =
+        resp.status === 401
+          ? "Your OPENROUTER_API_KEY looks invalid."
+          : resp.status === 402
+            ? "Your OpenRouter account is out of credit."
+            : "";
       return NextResponse.json(
-        { ok: false, error: `LLM request failed (${resp.status}). ${detail.slice(0, 180)}` },
+        { ok: false, error: `${hint || `LLM request failed (${resp.status}).`} ${detail.slice(0, 160)}`.trim() },
         { status: 502 },
       );
     }

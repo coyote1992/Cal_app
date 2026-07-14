@@ -6,7 +6,7 @@
 
 import { useState } from "react";
 import type { CalorieBasis } from "@/lib/types";
-import { amountUnit, computeCalories, defaultAmount, formatKcal, formatQty, quickAmounts } from "@/lib/util";
+import { amountUnit, computeCalories, defaultAmount, formatKcal, formatQty, isPer100, quickAmounts } from "@/lib/util";
 
 export default function AmountEditor({
   name,
@@ -43,7 +43,7 @@ export default function AmountEditor({
       <div className="ae-quick">
         {quickAmounts(basis).map((q) => (
           <button key={q} className={amount === q ? "active" : ""} onClick={() => setRaw(String(q))}>
-            {basis === "per100g" ? `${q} g` : `${formatQty(q)}×`}
+            {isPer100(basis) ? `${q} ${unit}` : `${formatQty(q)}×`}
           </button>
         ))}
       </div>

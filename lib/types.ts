@@ -6,8 +6,9 @@ export type ID = string;
  * How a food's calories are defined:
  *  - "serving": a fixed kcal per serving/unit (e.g. 1 banana = 105).
  *  - "per100g": kcal per 100 g, for cooked/"ready" foods you weigh before eating.
+ *  - "per100ml": kcal per 100 ml, for drinks you measure by volume.
  */
-export type CalorieBasis = "serving" | "per100g";
+export type CalorieBasis = "serving" | "per100g" | "per100ml";
 
 /** A saved item the user defines once and reuses, grouped under a category. */
 export interface Food {

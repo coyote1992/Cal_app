@@ -4,8 +4,9 @@ import { useState } from "react";
 import { useStore } from "./store";
 import CalorieRing from "@/components/CalorieRing";
 import SavedSheet from "@/components/SavedSheet";
-import NewStuffSheet from "@/components/NewStuffSheet";
-import { IconBookmark, IconSparkles, IconTrash } from "@/components/icons";
+import PhotoSheet from "@/components/PhotoSheet";
+import QuickCaloriesSheet from "@/components/QuickCaloriesSheet";
+import { IconBookmark, IconCamera, IconHash, IconTrash } from "@/components/icons";
 import { addDays, dayLabel, todayISO } from "@/lib/date";
 import { caloriesForDate, entriesForDate } from "@/lib/calc";
 import { formatKcal, formatQty } from "@/lib/util";
@@ -14,7 +15,8 @@ export default function TodayPage() {
   const { hydrated, entries, settings, deleteEntry } = useStore();
   const [date, setDate] = useState<string>(todayISO());
   const [savedOpen, setSavedOpen] = useState(false);
-  const [newOpen, setNewOpen] = useState(false);
+  const [photoOpen, setPhotoOpen] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
 
   if (!hydrated) return <div className="loading">Loading…</div>;
 
@@ -68,14 +70,19 @@ export default function TodayPage() {
 
       <div className="today-actions">
         <button className="action-btn accent" onClick={() => setSavedOpen(true)}>
-          <IconBookmark className="action-ic" width={24} height={24} />
-          <span className="action-title">Saved stuff</span>
-          <span className="action-sub">Pick from your foods</span>
+          <IconBookmark className="action-ic" width={22} height={22} />
+          <span className="action-title">Saved</span>
+          <span className="action-sub">your foods</span>
         </button>
-        <button className="action-btn" onClick={() => setNewOpen(true)}>
-          <IconSparkles className="action-ic" width={24} height={24} />
-          <span className="action-title">New stuff</span>
-          <span className="action-sub">Add or estimate</span>
+        <button className="action-btn" onClick={() => setPhotoOpen(true)}>
+          <IconCamera className="action-ic" width={22} height={22} />
+          <span className="action-title">Photo</span>
+          <span className="action-sub">AI estimate</span>
+        </button>
+        <button className="action-btn" onClick={() => setQuickOpen(true)}>
+          <IconHash className="action-ic" width={22} height={22} />
+          <span className="action-title">Calories</span>
+          <span className="action-sub">type a number</span>
         </button>
       </div>
 
@@ -86,7 +93,7 @@ export default function TodayPage() {
         <div className="empty">
           Nothing logged yet.
           <br />
-          Tap “Saved stuff” or “New stuff” to start.
+          Tap a button above to start.
         </div>
       ) : (
         <ul className="entry-list">
@@ -94,7 +101,9 @@ export default function TodayPage() {
             const meta =
               e.basis === "per100g"
                 ? `${formatQty(e.quantity)} g · ${formatKcal(e.perUnit)} kcal/100g`
-                : `${formatQty(e.quantity)} × ${formatKcal(e.perUnit)} kcal`;
+                : e.basis === "per100ml"
+                  ? `${formatQty(e.quantity)} ml · ${formatKcal(e.perUnit)} kcal/100ml`
+                  : `${formatQty(e.quantity)} × ${formatKcal(e.perUnit)} kcal`;
             return (
               <li key={e.id} className="entry-row">
                 <div className="entry-main">
@@ -115,7 +124,8 @@ export default function TodayPage() {
       )}
 
       <SavedSheet open={savedOpen} onClose={() => setSavedOpen(false)} date={date} />
-      <NewStuffSheet open={newOpen} onClose={() => setNewOpen(false)} date={date} />
+      <PhotoSheet open={photoOpen} onClose={() => setPhotoOpen(false)} date={date} />
+      <QuickCaloriesSheet open={quickOpen} onClose={() => setQuickOpen(false)} date={date} />
     </div>
   );
 }

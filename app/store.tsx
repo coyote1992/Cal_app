@@ -8,7 +8,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from "rea
 import type { ReactNode } from "react";
 import type { AppData, CalorieBasis, Entry, EntrySource, Food, Settings } from "@/lib/types";
 import { emptyData, loadData, saveData } from "@/lib/storage";
-import { computeCalories, uid } from "@/lib/util";
+import { computeCalories, isPer100, uid } from "@/lib/util";
 
 export interface FoodInput {
   name: string;
@@ -104,7 +104,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addEntry = useCallback((input: EntryInput) => {
-    const quantity = input.quantity > 0 ? input.quantity : input.basis === "per100g" ? 100 : 1;
+    const quantity = input.quantity > 0 ? input.quantity : isPer100(input.basis) ? 100 : 1;
     setData((d) => ({
       ...d,
       entries: [

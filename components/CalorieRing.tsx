@@ -2,17 +2,22 @@
 
 import { formatKcal } from "@/lib/util";
 
-/** Circular progress ring (green gradient) showing calories consumed vs. budget. */
+/**
+ * Circular progress ring (green gradient). The ring fills from 0 up to the
+ * budget (a full circle = the whole budget). The big number counts up from 0
+ * (calories eaten so far); the percentage of budget sits just under it.
+ */
 export default function CalorieRing({ consumed, budget }: { consumed: number; budget: number }) {
   const size = 208;
   const stroke = 16;
   const r = (size - stroke) / 2;
   const circumference = 2 * Math.PI * r;
 
-  const pct = budget > 0 ? Math.min(consumed / budget, 1) : 0;
+  const ratio = budget > 0 ? consumed / budget : 0;
+  const pct = Math.min(ratio, 1);
   const over = budget > 0 && consumed > budget;
-  const remaining = budget - consumed;
   const dash = circumference * pct;
+  const percentText = budget > 0 ? `${Math.round(ratio * 100)}%` : "—";
 
   return (
     <div className="ring-wrap">
@@ -37,13 +42,9 @@ export default function CalorieRing({ consumed, budget }: { consumed: number; bu
         />
       </svg>
       <div className="ring-center">
-        <div className="ring-value" style={over ? { color: "var(--danger)" } : undefined}>
-          {formatKcal(Math.abs(remaining))}
-        </div>
-        <div className="ring-label">{over ? "over budget" : "remaining"}</div>
-        <div className="ring-sub">
-          {formatKcal(consumed)} / {formatKcal(budget)} kcal
-        </div>
+        <div className="ring-value">{formatKcal(consumed)}</div>
+        <div className={"ring-percent" + (over ? " over" : "")}>{percentText}</div>
+        <div className="ring-sub">of {formatKcal(budget)} kcal</div>
       </div>
     </div>
   );

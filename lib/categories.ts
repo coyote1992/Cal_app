@@ -3,7 +3,16 @@
 
 import type { Food } from "./types";
 
-export const DEFAULT_CATEGORIES = ["Fruits", "Vegetables", "Drinks", "Snacks", "Ready foods", "Other"];
+export const DEFAULT_CATEGORIES = [
+  "Fruits",
+  "Vegetables",
+  "Drinks",
+  "Meat",
+  "Ready foods",
+  "Snacks",
+  "Sweets",
+  "Other",
+];
 
 function rank(cat: string): number {
   if (cat === "Other") return 1000; // always last

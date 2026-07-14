@@ -1,0 +1,114 @@
+import { NextResponse } from "next/server";
+
+// Photo → calorie estimate. Sends the uploaded image to a vision model via
+// OpenRouter and returns a structured estimate. Until OPENROUTER_API_KEY is set,
+// it returns a clearly-labeled demo estimate so the whole UI flow is testable —
+// so "only the LLM needs plugging in" is literally true: add the key.
+
+export const runtime = "nodejs";
+
+const SYSTEM_PROMPT = `You are a nutrition assistant. From the photo, identify the food and estimate its TOTAL calories.
+Reply with ONLY a JSON object, no prose or markdown, in exactly this shape:
+{"name":"<short food name>","kcal":<integer total kcal>,"items":[{"name":"<item>","kcal":<int>}],"note":"<one short sentence on assumptions>"}`;
+
+interface EstimateResult {
+  ok: boolean;
+  name: string;
+  kcal: number;
+  items: { name: string; kcal: number }[];
+  note: string;
+  mock: boolean;
+  error?: string;
+}
+
+export async function POST(req: Request) {
+  let body: { image?: string; hint?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ ok: false, error: "Bad request" }, { status: 400 });
+  }
+
+  const { image, hint } = body;
+  if (!image || typeof image !== "string") {
+    return NextResponse.json({ ok: false, error: "No image provided" }, { status: 400 });
+  }
+
+  const key = process.env.OPENROUTER_API_KEY;
+  const model = process.env.OPENROUTER_MODEL || "openai/gpt-4o";
+
+  // No key yet → labeled demo estimate so the flow is fully testable now.
+  if (!key) {
+    return NextResponse.json({
+      ok: true,
+      mock: true,
+      name: hint?.trim() ? hint.trim() : "Estimated meal",
+      kcal: 450,
+      items: [{ name: hint?.trim() || "Meal", kcal: 450 }],
+      note: "Demo estimate — add an OPENROUTER_API_KEY to switch on real photo analysis.",
+    } satisfies EstimateResult);
+  }
+
+  try {
+    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        temperature: 0.2,
+        max_tokens: 500,
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: hint?.trim() ? `Extra context: ${hint.trim()}` : "Estimate the calories in this food.",
+              },
+              { type: "image_url", image_url: { url: image } },
+            ],
+          },
+        ],
+      }),
+    });
+
+    if (!resp.ok) {
+      const detail = await resp.text().catch(() => "");
+      return NextResponse.json(
+        { ok: false, error: `LLM request failed (${resp.status}). ${detail.slice(0, 180)}` },
+        { status: 502 },
+      );
+    }
+
+    const data = await resp.json();
+    const content: string = data?.choices?.[0]?.message?.content ?? "";
+    const parsed = parseEstimate(content);
+    if (!parsed) {
+      return NextResponse.json({ ok: false, error: "Could not read the model's response." }, { status: 502 });
+    }
+    return NextResponse.json({ ...parsed, ok: true, mock: false } satisfies EstimateResult);
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: (e as Error).message || "Network error" }, { status: 500 });
+  }
+}
+
+function parseEstimate(content: string): Omit<EstimateResult, "ok" | "mock" | "error"> | null {
+  const cleaned = content.replace(/```json/gi, "").replace(/```/g, "").trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start === -1 || end === -1) return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const obj: any = JSON.parse(cleaned.slice(start, end + 1));
+    const kcal = Math.round(Number(obj.kcal));
+    if (!Number.isFinite(kcal)) return null;
+    const items = Array.isArray(obj.items)
+      ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        obj.items.map((it: any) => ({ name: String(it?.name ?? "Item"), kcal: Math.round(Number(it?.kcal) || 0) }))
+      : [];
+    return { name: String(obj.name ?? "Estimated meal"), kcal, items, note: String(obj.note ?? "") };
+  } catch {
+    return null;
+  }
+}

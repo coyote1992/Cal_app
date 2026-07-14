@@ -23,28 +23,38 @@ export function formatKcal(n: number): string {
   return Math.round(n).toLocaleString();
 }
 
-/** Total kcal for an amount, honoring the calorie basis. */
-export function computeCalories(basis: CalorieBasis, rate: number, amount: number): number {
-  return Math.round(basis === "per100g" ? (rate * amount) / 100 : rate * amount);
+/** True for volume/weight bases where the rate is defined per 100 units. */
+export function isPer100(basis: CalorieBasis): boolean {
+  return basis === "per100g" || basis === "per100ml";
 }
 
-/** Sensible starting amount: 1 serving, or 100 g. */
+/** Total kcal for an amount, honoring the calorie basis. */
+export function computeCalories(basis: CalorieBasis, rate: number, amount: number): number {
+  return Math.round(isPer100(basis) ? (rate * amount) / 100 : rate * amount);
+}
+
+/** Sensible starting amount: 1 serving, or 100 g / 100 ml. */
 export function defaultAmount(basis: CalorieBasis): number {
-  return basis === "per100g" ? 100 : 1;
+  return isPer100(basis) ? 100 : 1;
 }
 
 /** Unit suffix shown next to an amount. */
 export function amountUnit(basis: CalorieBasis): string {
-  return basis === "per100g" ? "g" : "×";
+  if (basis === "per100g") return "g";
+  if (basis === "per100ml") return "ml";
+  return "×";
 }
 
 /** Quick-pick amounts offered for a basis. */
 export function quickAmounts(basis: CalorieBasis): number[] {
-  return basis === "per100g" ? [50, 100, 150, 200, 250] : [0.5, 1, 1.5, 2, 3];
+  if (basis === "per100g") return [50, 100, 150, 200, 250];
+  if (basis === "per100ml") return [100, 200, 250, 330, 500];
+  return [0.5, 1, 1.5, 2, 3];
 }
 
-/** "105 kcal / medium" or "165 kcal / 100 g". */
+/** "105 kcal / medium", "165 kcal / 100 g", or "50 kcal / 100 ml". */
 export function rateLabel(food: Pick<Food, "basis" | "calories" | "unit">): string {
   if (food.basis === "per100g") return `${formatKcal(food.calories)} kcal / 100 g`;
+  if (food.basis === "per100ml") return `${formatKcal(food.calories)} kcal / 100 ml`;
   return `${formatKcal(food.calories)} kcal / ${food.unit || "serving"}`;
 }

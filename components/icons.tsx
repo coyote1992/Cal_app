@@ -96,3 +96,9 @@ export const IconSparkles = (p: P) => (
     <path d="M18 14l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z" />
   </Svg>
 );
+
+export const IconHash = (p: P) => (
+  <Svg {...p}>
+    <path d="M10 3 8 21M16 3l-2 18M4 8.5h16M3 15.5h16" />
+  </Svg>
+);

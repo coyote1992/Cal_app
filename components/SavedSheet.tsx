@@ -1,7 +1,8 @@
 "use client";
 
-// "Saved stuff": find a saved food fast (search across all, recents row, or
-// category accordions), then set an amount and add. Minimal taps, not one long list.
+// "Saved stuff": find a saved food fast. Search across all, a Recent row, then
+// every category as its own always-visible section (title, bubbles, divider) —
+// no dropdowns to tap open. Pick a food, set the amount, add.
 
 import { useEffect, useMemo, useState } from "react";
 import type { Food } from "@/lib/types";
@@ -9,7 +10,6 @@ import { useStore } from "@/app/store";
 import { foodsByCategory } from "@/lib/categories";
 import { rateLabel } from "@/lib/util";
 import AmountEditor from "./AmountEditor";
-import { IconChevronRight } from "./icons";
 
 function FoodChip({ f, selected, onClick }: { f: Food; selected: boolean; onClick: () => void }) {
   return (
@@ -32,7 +32,6 @@ export default function SavedSheet({
   const { foods, entries, addEntry } = useStore();
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Food | null>(null);
-  const [openCats, setOpenCats] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
 
   const groups = useMemo(() => foodsByCategory(foods), [foods]);
@@ -42,10 +41,7 @@ export default function SavedSheet({
       setQuery("");
       setSelected(null);
       setToast(null);
-      setOpenCats(new Set(groups.length ? [groups[0].category] : []));
     }
-    // Only re-run when the sheet opens; groups snapshot at that moment is fine.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
@@ -58,7 +54,7 @@ export default function SavedSheet({
   const recents = useMemo(() => {
     const seen = new Set<string>();
     const out: Food[] = [];
-    for (let i = entries.length - 1; i >= 0 && out.length < 6; i--) {
+    for (let i = entries.length - 1; i >= 0 && out.length < 8; i--) {
       const fid = entries[i].foodId;
       if (!fid || seen.has(fid)) continue;
       const f = foods.find((x) => x.id === fid);
@@ -99,18 +95,9 @@ export default function SavedSheet({
     setSelected(null);
   }
 
-  function toggleCat(c: string) {
-    setOpenCats((prev) => {
-      const next = new Set(prev);
-      next.has(c) ? next.delete(c) : next.add(c);
-      return next;
-    });
-  }
-
   return (
     <div className="sheet-backdrop" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Saved foods">
-        <div className="sheet-grip" />
         <div className="sheet-head">
           <div className="sheet-title">Saved stuff</div>
           <button className="link" onClick={onClose}>
@@ -144,46 +131,32 @@ export default function SavedSheet({
           <div className="empty">
             No saved foods yet.
             <br />
-            Use “New stuff” to add your first one.
+            Add them on the Foods tab.
           </div>
         ) : (
           <>
             {recents.length > 0 && (
-              <>
-                <div className="section-title" style={{ marginTop: 6 }}>
-                  Recent
-                </div>
+              <div className="cat-section">
+                <div className="cat-title">Recent</div>
                 <div className="recents">
                   {recents.map((f) => (
                     <FoodChip key={f.id} f={f} selected={selected?.id === f.id} onClick={() => setSelected(f)} />
                   ))}
                 </div>
-              </>
+              </div>
             )}
-            <div style={{ marginTop: 10 }}>
-              {groups.map((g) => {
-                const isOpen = openCats.has(g.category);
-                return (
-                  <div key={g.category} className={"cat" + (isOpen ? " open" : "")}>
-                    <button className="cat-head" onClick={() => toggleCat(g.category)} aria-expanded={isOpen}>
-                      <span className="cat-name">
-                        {g.category} <span className="cat-count">{g.foods.length}</span>
-                      </span>
-                      <IconChevronRight className="cat-chevron" width={18} height={18} />
-                    </button>
-                    {isOpen && (
-                      <div className="cat-body">
-                        <div className="chip-grid">
-                          {g.foods.map((f) => (
-                            <FoodChip key={f.id} f={f} selected={selected?.id === f.id} onClick={() => setSelected(f)} />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            {groups.map((g) => (
+              <div key={g.category} className="cat-section">
+                <div className="cat-title">
+                  {g.category} <span className="cat-count">{g.foods.length}</span>
+                </div>
+                <div className="chip-grid">
+                  {g.foods.map((f) => (
+                    <FoodChip key={f.id} f={f} selected={selected?.id === f.id} onClick={() => setSelected(f)} />
+                  ))}
+                </div>
+              </div>
+            ))}
           </>
         )}
 

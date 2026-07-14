@@ -136,16 +136,21 @@ function FoodEditor({
           <label>How are its calories measured?</label>
           <div className="segmented">
             <button className={basis === "serving" ? "active" : ""} onClick={() => setBasis("serving")}>
-              Per serving
+              Serving
             </button>
             <button className={basis === "per100g" ? "active" : ""} onClick={() => setBasis("per100g")}>
-              Per 100 g
+              100 g
+            </button>
+            <button className={basis === "per100ml" ? "active" : ""} onClick={() => setBasis("per100ml")}>
+              100 ml
             </button>
           </div>
         </div>
 
         <div className="field">
-          <label htmlFor="f-rate">{basis === "per100g" ? "Calories per 100 g" : "Calories per serving"}</label>
+          <label htmlFor="f-rate">
+            {basis === "per100g" ? "Calories per 100 g" : basis === "per100ml" ? "Calories per 100 ml" : "Calories per serving"}
+          </label>
           <input
             id="f-rate"
             className="input"
@@ -153,7 +158,7 @@ function FoodEditor({
             inputMode="numeric"
             value={rate}
             onChange={(e) => setRate(e.target.value)}
-            placeholder={basis === "per100g" ? "e.g. 165" : "e.g. 120"}
+            placeholder={basis === "serving" ? "e.g. 120" : basis === "per100ml" ? "e.g. 42" : "e.g. 165"}
           />
         </div>
 

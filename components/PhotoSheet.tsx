@@ -1,0 +1,218 @@
+"use client";
+
+// "Photo": snap or choose a photo, let a vision model estimate the calories, then
+// add the (editable) result straight to today's log. The estimate call lives in
+// /api/estimate — until an API key is set it returns a labeled demo number so the
+// whole flow works. This replaces the old manual "New stuff" form (that job now
+// belongs to the Foods tab).
+
+import { useEffect, useRef, useState } from "react";
+import type { ChangeEvent } from "react";
+import { useStore } from "@/app/store";
+import { formatKcal } from "@/lib/util";
+import { IconCamera } from "./icons";
+
+interface Estimate {
+  name: string;
+  kcal: number;
+  items: { name: string; kcal: number }[];
+  note: string;
+  mock: boolean;
+}
+
+type Status = "idle" | "loading" | "done" | "error";
+
+export default function PhotoSheet({
+  open,
+  onClose,
+  date,
+}: {
+  open: boolean;
+  onClose: () => void;
+  date: string;
+}) {
+  const { addEntry } = useStore();
+  const [image, setImage] = useState<string | null>(null);
+  const [hint, setHint] = useState("");
+  const [status, setStatus] = useState<Status>("idle");
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<Estimate | null>(null);
+  const [name, setName] = useState("");
+  const [kcal, setKcal] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      setImage(null);
+      setHint("");
+      setStatus("idle");
+      setError("");
+      setResult(null);
+      setName("");
+      setKcal("");
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  function onFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setImage(String(reader.result));
+      setStatus("idle");
+      setResult(null);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function estimate() {
+    if (!image) return;
+    setStatus("loading");
+    setError("");
+    try {
+      const resp = await fetch("/api/estimate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image, hint }),
+      });
+      const data = await resp.json();
+      if (!data.ok) {
+        setError(data.error || "Estimation failed.");
+        setStatus("error");
+        return;
+      }
+      setResult(data as Estimate);
+      setName(data.name);
+      setKcal(String(data.kcal));
+      setStatus("done");
+    } catch (err) {
+      setError((err as Error).message || "Network error.");
+      setStatus("error");
+    }
+  }
+
+  function addToLog() {
+    const k = Math.round(Number(kcal));
+    if (!Number.isFinite(k) || k <= 0) return;
+    addEntry({
+      date,
+      name: name.trim() || "Photo estimate",
+      category: "Other",
+      basis: "serving",
+      perUnit: k,
+      quantity: 1,
+      source: "photo",
+      note: result?.note,
+    });
+    onClose();
+  }
+
+  const kNum = Number(kcal);
+
+  return (
+    <div className="sheet-backdrop" onClick={onClose}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Estimate from photo">
+        <div className="sheet-head">
+          <div className="sheet-title">Photo estimate</div>
+          <button className="link" onClick={onClose}>
+            Cancel
+          </button>
+        </div>
+
+        <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden onChange={onFile} />
+
+        {!image ? (
+          <button className="photo-drop" onClick={() => fileRef.current?.click()}>
+            <IconCamera width={30} height={30} />
+            <span className="photo-drop-title">Take or choose a photo</span>
+            <span className="photo-drop-sub">AI will estimate the calories</span>
+          </button>
+        ) : (
+          <>
+            <div className="photo-preview">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={image} alt="Food to estimate" />
+              <button className="photo-change" onClick={() => fileRef.current?.click()}>
+                Change
+              </button>
+            </div>
+
+            <div className="field" style={{ marginTop: 12 }}>
+              <label htmlFor="ph-hint">Add a hint (optional)</label>
+              <input
+                id="ph-hint"
+                className="input"
+                placeholder="e.g. large plate, cooked in oil"
+                value={hint}
+                onChange={(e) => setHint(e.target.value)}
+              />
+            </div>
+
+            {status !== "done" && (
+              <button className="btn btn-primary" disabled={status === "loading"} onClick={estimate}>
+                {status === "loading" ? (
+                  <>
+                    <span className="spinner" /> Estimating…
+                  </>
+                ) : (
+                  "Estimate calories"
+                )}
+              </button>
+            )}
+
+            {status === "error" && <div className="msg err">{error}</div>}
+
+            {status === "done" && result && (
+              <div className="estimate-result">
+                {result.mock && <span className="demo-badge">Demo estimate</span>}
+                <div className="field">
+                  <label htmlFor="ph-name">Name</label>
+                  <input id="ph-name" className="input" value={name} onChange={(e) => setName(e.target.value)} />
+                </div>
+                <div className="field">
+                  <label htmlFor="ph-kcal">Calories</label>
+                  <div className="ae-input-wrap wide">
+                    <input id="ph-kcal" type="number" inputMode="numeric" value={kcal} onChange={(e) => setKcal(e.target.value)} />
+                    <span className="ae-unit">kcal</span>
+                  </div>
+                </div>
+                {result.items.length > 1 && (
+                  <div className="est-items">
+                    {result.items.map((it, i) => (
+                      <div key={i} className="est-item">
+                        <span>{it.name}</span>
+                        <span>{formatKcal(it.kcal)} kcal</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {result.note && (
+                  <div className="hint" style={{ marginTop: 2 }}>
+                    {result.note}
+                  </div>
+                )}
+                <button className="btn btn-primary" style={{ marginTop: 12 }} disabled={!(kNum > 0)} onClick={addToLog}>
+                  Add to today{kNum > 0 ? ` · ${formatKcal(kNum)} kcal` : ""}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
+        <div className="note" style={{ marginTop: 14 }}>
+          Your photo is sent to the AI model only when you tap “Estimate”. Until an API key is configured you’ll get a demo number so you can try the flow.
+        </div>
+      </div>
+    </div>
+  );
+}

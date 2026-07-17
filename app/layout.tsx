@@ -22,7 +22,7 @@ const body = Hanken_Grotesk({
 export const metadata: Metadata = {
   title: "Calorie Tracker",
   description: "Track your daily calorie intake against a budget, with weekly and monthly stats.",
-  appleWebApp: { capable: true, statusBarStyle: "default", title: "Calories" },
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Calories" },
 };
 
 export const viewport: Viewport = {

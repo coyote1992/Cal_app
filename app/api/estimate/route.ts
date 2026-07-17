@@ -38,7 +38,12 @@ export async function POST(req: Request) {
   }
 
   const key = process.env.OPENROUTER_API_KEY;
-  const model = process.env.OPENROUTER_MODEL || "openai/gpt-4o";
+  const model = process.env.OPENROUTER_MODEL || "openai/o4-mini";
+  // Reasoning models (o-series, gpt-5, etc.) think before answering, which is
+  // better for judging portions/ingredients from a photo. Effort is tunable and
+  // can be turned off ("off"/"none") to fall back to a plain sampling model.
+  const effort = (process.env.OPENROUTER_REASONING_EFFORT || "medium").toLowerCase();
+  const reasoningOn = effort !== "off" && effort !== "none";
 
   // No key yet → labeled demo estimate so the flow is fully testable now.
   if (!key) {
@@ -52,28 +57,40 @@ export async function POST(req: Request) {
     } satisfies EstimateResult);
   }
 
+  // Reasoning tokens count toward the completion cap, so a reasoning model
+  // needs plenty of headroom or the final JSON gets truncated; a plain model
+  // does not. Reasoning models also reject a custom temperature, so we only set
+  // one on the non-reasoning path.
+  const payload: Record<string, unknown> = {
+    model,
+    max_tokens: reasoningOn ? 2000 : 500,
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: hint?.trim() ? `Extra context: ${hint.trim()}` : "Estimate the calories in this food.",
+          },
+          { type: "image_url", image_url: { url: image } },
+        ],
+      },
+    ],
+  };
+  if (reasoningOn) {
+    // We only need the final answer, not the chain of thought, so exclude it.
+    const level = ["low", "medium", "high"].includes(effort) ? effort : "medium";
+    payload.reasoning = { effort: level, exclude: true };
+  } else {
+    payload.temperature = 0.2;
+  }
+
   try {
     const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model,
-        temperature: 0.2,
-        max_tokens: 500,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: hint?.trim() ? `Extra context: ${hint.trim()}` : "Estimate the calories in this food.",
-              },
-              { type: "image_url", image_url: { url: image } },
-            ],
-          },
-        ],
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (!resp.ok) {

@@ -1,15 +1,20 @@
 import { ImageResponse } from "next/og";
 
 // Browser-tab / PWA favicon. Simpler than the Home Screen icon so it stays
-// legible at 32px: just the leaf silhouette + midrib on the green tile.
+// legible at 32px: a bolder 3-tine fork on the green tile.
 export const runtime = "nodejs";
 export const size = { width: 32, height: 32 };
 export const contentType = "image/png";
 
-const leaf = `data:image/svg+xml,${encodeURIComponent(
+const fork = `data:image/svg+xml,${encodeURIComponent(
   `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>
-    <path d='M50 8 C 22 30 22 66 50 92 C 78 66 78 30 50 8 Z' fill='#eef1e9'/>
-    <path d='M50 26 L50 84' stroke='#2e7d53' stroke-width='7' stroke-linecap='round'/>
+    <g stroke='#eef1e9' stroke-width='8' stroke-linecap='round' fill='none'>
+      <path d='M38 22 L38 46'/>
+      <path d='M50 20 L50 46'/>
+      <path d='M62 22 L62 46'/>
+    </g>
+    <rect x='34' y='44' width='32' height='11' rx='5.5' fill='#eef1e9'/>
+    <path d='M50 53 L50 84' stroke='#eef1e9' stroke-width='12' stroke-linecap='round' fill='none'/>
   </svg>`,
 )}`;
 
@@ -28,7 +33,7 @@ export default function Icon() {
         }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={leaf} width={24} height={24} alt="" />
+        <img src={fork} width={24} height={24} alt="" />
       </div>
     ),
     { ...size },

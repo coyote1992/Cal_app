@@ -94,7 +94,7 @@ function presetToFood(p: PresetFood, i: number): Food {
 }
 
 export function emptyData(): AppData {
-  return { version: DATA_VERSION, foods: [], entries: [], settings: { ...DEFAULT_SETTINGS } };
+  return { version: DATA_VERSION, foods: [], entries: [], settings: { ...DEFAULT_SETTINGS }, updatedAt: 0 };
 }
 
 /** The user's food list, seeded on the very first run (all editable/deletable). */
@@ -104,6 +104,7 @@ export function seededData(): AppData {
     foods: PRESET_FOODS.map(presetToFood),
     entries: [],
     settings: { ...DEFAULT_SETTINGS },
+    updatedAt: Date.now(),
   };
 }
 
@@ -150,7 +151,7 @@ function mergePresets(foods: Food[]): Food[] {
   return [...foods, ...additions];
 }
 
-function normalize(raw: unknown): AppData {
+export function normalize(raw: unknown): AppData {
   const base = emptyData();
   if (!raw || typeof raw !== "object") return base;
   const d = raw as Partial<AppData> & { version?: number };
@@ -171,6 +172,7 @@ function normalize(raw: unknown): AppData {
     foods,
     entries: Array.isArray(d.entries) ? d.entries.map((e) => normalizeEntry(e)) : base.entries,
     settings: { ...base.settings, ...(d.settings ?? {}) },
+    updatedAt: Number(d.updatedAt) || Date.now(),
   };
 }
 

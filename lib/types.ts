@@ -60,4 +60,6 @@ export interface AppData {
   foods: Food[];
   entries: Entry[];
   settings: Settings;
+  /** Last-modified time (ms). Used to resolve conflicts when cloud-syncing across devices. */
+  updatedAt: number;
 }

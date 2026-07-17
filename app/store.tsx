@@ -4,11 +4,25 @@
 // React state, hydrates from (and persists to) the storage layer. Every screen
 // reads and mutates data through useStore().
 
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { AppData, CalorieBasis, Entry, EntrySource, Food, Settings } from "@/lib/types";
-import { emptyData, loadData, saveData } from "@/lib/storage";
+import { emptyData, loadData, normalize, saveData } from "@/lib/storage";
 import { computeCalories, isPer100, uid } from "@/lib/util";
+import {
+  clearSyncCode,
+  generateSyncCode,
+  getSyncCode,
+  pullSnapshot,
+  pushSnapshot,
+  setSyncCode as persistSyncCode,
+} from "@/lib/sync";
+
+export type SyncStatus = "idle" | "syncing" | "synced" | "error";
+export interface SyncResult {
+  ok: boolean;
+  error?: string;
+}
 
 export interface FoodInput {
   name: string;
@@ -46,6 +60,12 @@ interface StoreValue {
   replaceAll: (data: AppData) => void;
   clearAll: () => void;
   exportJSON: () => string;
+  syncCode: string | null;
+  syncStatus: SyncStatus;
+  syncError: string | null;
+  startNewSync: () => Promise<SyncResult>;
+  linkSync: (code: string) => Promise<SyncResult>;
+  unlinkSync: () => void;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -65,19 +85,72 @@ function makeFood(input: FoodInput): Food {
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<AppData>(emptyData);
   const [hydrated, setHydrated] = useState(false);
+  const [syncCode, setSyncCodeState] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const skipNextPush = useRef(false);
+  const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Initial hydrate: load local data, then if this device is linked, pull the
+  // cloud snapshot and keep whichever copy was modified most recently.
   useEffect(() => {
-    setData(loadData());
-    setHydrated(true);
+    const local = loadData();
+    const code = getSyncCode();
+    setSyncCodeState(code);
+
+    if (!code) {
+      setData(local);
+      setHydrated(true);
+      return;
+    }
+
+    setSyncStatus("syncing");
+    pullSnapshot(code)
+      .then((cloud) => {
+        if (cloud && cloud.updatedAt >= local.updatedAt) {
+          skipNextPush.current = true;
+          setData(normalize(cloud.data));
+        } else {
+          setData(local);
+        }
+        setSyncStatus("synced");
+      })
+      .catch((e) => {
+        setData(local);
+        setSyncStatus("error");
+        setSyncError((e as Error).message);
+      })
+      .finally(() => setHydrated(true));
   }, []);
 
+  // Persist locally on every change, and — if linked — push to the cloud on a
+  // short debounce so rapid edits (e.g. typing a budget) don't spam requests.
   useEffect(() => {
-    if (hydrated) saveData(data);
-  }, [data, hydrated]);
+    if (!hydrated) return;
+    saveData(data);
+    if (!syncCode) return;
+    if (skipNextPush.current) {
+      skipNextPush.current = false;
+      return;
+    }
+    if (pushTimer.current) clearTimeout(pushTimer.current);
+    pushTimer.current = setTimeout(() => {
+      setSyncStatus("syncing");
+      pushSnapshot(syncCode, data, data.updatedAt)
+        .then(() => setSyncStatus("synced"))
+        .catch((e) => {
+          setSyncStatus("error");
+          setSyncError((e as Error).message);
+        });
+    }, 1000);
+    return () => {
+      if (pushTimer.current) clearTimeout(pushTimer.current);
+    };
+  }, [data, hydrated, syncCode]);
 
   const addFood = useCallback((input: FoodInput): Food => {
     const food = makeFood(input);
-    setData((d) => ({ ...d, foods: [...d.foods, food] }));
+    setData((d) => ({ ...d, foods: [...d.foods, food], updatedAt: Date.now() }));
     return food;
   }, []);
 
@@ -96,11 +169,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             }
           : f,
       ),
+      updatedAt: Date.now(),
     }));
   }, []);
 
   const deleteFood = useCallback((id: string) => {
-    setData((d) => ({ ...d, foods: d.foods.filter((f) => f.id !== id) }));
+    setData((d) => ({ ...d, foods: d.foods.filter((f) => f.id !== id), updatedAt: Date.now() }));
   }, []);
 
   const addEntry = useCallback((input: EntryInput) => {
@@ -124,20 +198,60 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           createdAt: Date.now(),
         },
       ],
+      updatedAt: Date.now(),
     }));
   }, []);
 
   const deleteEntry = useCallback((id: string) => {
-    setData((d) => ({ ...d, entries: d.entries.filter((e) => e.id !== id) }));
+    setData((d) => ({ ...d, entries: d.entries.filter((e) => e.id !== id), updatedAt: Date.now() }));
   }, []);
 
   const updateSettings = useCallback((patch: Partial<Settings>) => {
-    setData((d) => ({ ...d, settings: { ...d.settings, ...patch } }));
+    setData((d) => ({ ...d, settings: { ...d.settings, ...patch }, updatedAt: Date.now() }));
   }, []);
 
-  const replaceAll = useCallback((next: AppData) => setData(next), []);
-  const clearAll = useCallback(() => setData(emptyData()), []);
+  const replaceAll = useCallback((next: AppData) => setData({ ...next, updatedAt: Date.now() }), []);
+  const clearAll = useCallback(() => setData({ ...emptyData(), updatedAt: Date.now() }), []);
   const exportJSON = () => JSON.stringify(data, null, 2);
+
+  // Pull first (in case the code already has cloud data), then push whatever
+  // isn't overwritten by that pull — so linking never silently drops local work.
+  const linkSync = useCallback(
+    async (rawCode: string): Promise<SyncResult> => {
+      const code = rawCode.trim().toUpperCase();
+      if (!code) return { ok: false, error: "Enter a code." };
+      setSyncStatus("syncing");
+      try {
+        const cloud = await pullSnapshot(code);
+        persistSyncCode(code);
+        setSyncCodeState(code);
+        if (cloud) {
+          skipNextPush.current = true;
+          setData(normalize(cloud.data));
+        } else {
+          await pushSnapshot(code, data, data.updatedAt);
+        }
+        setSyncStatus("synced");
+        setSyncError(null);
+        return { ok: true };
+      } catch (e) {
+        const message = (e as Error).message;
+        setSyncStatus("error");
+        setSyncError(message);
+        return { ok: false, error: message };
+      }
+    },
+    [data],
+  );
+
+  const startNewSync = useCallback(() => linkSync(generateSyncCode()), [linkSync]);
+
+  const unlinkSync = useCallback(() => {
+    clearSyncCode();
+    setSyncCodeState(null);
+    setSyncStatus("idle");
+    setSyncError(null);
+  }, []);
 
   const value: StoreValue = {
     hydrated,
@@ -153,6 +267,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     replaceAll,
     clearAll,
     exportJSON,
+    syncCode,
+    syncStatus,
+    syncError,
+    startNewSync,
+    linkSync,
+    unlinkSync,
   };
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

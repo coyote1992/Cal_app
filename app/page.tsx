@@ -2,17 +2,17 @@
 
 import { useState } from "react";
 import { useStore } from "./store";
-import CalorieRing from "@/components/CalorieRing";
+import Ring from "@/components/Ring";
 import SavedSheet from "@/components/SavedSheet";
 import PhotoSheet from "@/components/PhotoSheet";
 import QuickCaloriesSheet from "@/components/QuickCaloriesSheet";
-import { IconBookmark, IconCamera, IconHash, IconTrash } from "@/components/icons";
+import { IconBookmark, IconCamera, IconHash, IconLock, IconTrash } from "@/components/icons";
 import { addDays, dayLabel, todayISO } from "@/lib/date";
-import { caloriesForDate, entriesForDate } from "@/lib/calc";
+import { caloriesForDate, entriesForDate, proteinForDate } from "@/lib/calc";
 import { formatKcal, formatQty } from "@/lib/util";
 
 export default function TodayPage() {
-  const { hydrated, entries, settings, deleteEntry } = useStore();
+  const { hydrated, entries, settings, deleteEntry, isDayClosed, closeDay, reopenDay } = useStore();
   const [date, setDate] = useState<string>(todayISO());
   const [savedOpen, setSavedOpen] = useState(false);
   const [photoOpen, setPhotoOpen] = useState(false);
@@ -22,9 +22,13 @@ export default function TodayPage() {
 
   const dayEntries = entriesForDate(entries, date);
   const consumed = caloriesForDate(entries, date);
+  const protein = proteinForDate(entries, date);
   const budget = settings.dailyBudget;
-  const remaining = budget - consumed;
+  const proteinGoal = settings.proteinGoal;
+  const calLeft = budget - consumed;
+  const proteinLeft = proteinGoal - protein;
   const isToday = date === todayISO();
+  const closed = isDayClosed(date);
 
   return (
     <div>
@@ -51,40 +55,77 @@ export default function TodayPage() {
       </header>
 
       <section className="card ring-card">
-        <CalorieRing consumed={consumed} budget={budget} />
-        <div className="stat-row">
-          <div className="stat">
-            <span className="stat-num">{formatKcal(budget)}</span>
-            <span className="stat-lbl">Budget</span>
+        <div className="rings-row">
+          <div className="ring-col">
+            <Ring value={consumed} goal={budget} unit="kcal" size={176} stroke={15} overIsBad gradId="calGrad" />
+            <div className="ring-cap">
+              <div className={"ring-cap-main" + (calLeft < 0 ? " neg" : "")}>
+                {calLeft >= 0 ? `${formatKcal(calLeft)} left` : `${formatKcal(-calLeft)} over`}
+              </div>
+              <div className="ring-cap-sub">of {formatKcal(budget)} kcal</div>
+            </div>
           </div>
-          <div className="stat">
-            <span className="stat-num">{formatKcal(consumed)}</span>
-            <span className="stat-lbl">Food</span>
-          </div>
-          <div className="stat">
-            <span className={"stat-num" + (remaining < 0 ? " neg" : "")}>{formatKcal(remaining)}</span>
-            <span className="stat-lbl">Remaining</span>
+          <div className="ring-col">
+            <Ring value={protein} goal={proteinGoal} unit="g" size={132} stroke={12} gradId="proGrad" />
+            <div className="ring-cap">
+              <div className="ring-cap-main">
+                {proteinLeft > 0 ? `${formatQty(proteinLeft)} g to go` : "goal reached"}
+              </div>
+              <div className="ring-cap-sub">of {formatQty(proteinGoal)} g protein</div>
+            </div>
           </div>
         </div>
       </section>
 
-      <div className="today-actions">
-        <button className="action-btn accent" onClick={() => setSavedOpen(true)}>
-          <IconBookmark className="action-ic" width={22} height={22} />
-          <span className="action-title">Saved</span>
-          <span className="action-sub">your foods</span>
-        </button>
-        <button className="action-btn" onClick={() => setPhotoOpen(true)}>
-          <IconCamera className="action-ic" width={22} height={22} />
-          <span className="action-title">Photo</span>
-          <span className="action-sub">AI estimate</span>
-        </button>
-        <button className="action-btn" onClick={() => setQuickOpen(true)}>
-          <IconHash className="action-ic" width={22} height={22} />
-          <span className="action-title">Calories</span>
-          <span className="action-sub">type a number</span>
-        </button>
-      </div>
+      {closed ? (
+        <div className="day-closed">
+          <IconLock width={18} height={18} />
+          <div className="day-closed-text">
+            <strong>Day closed</strong>
+            <span>This day is locked — no more changes.</span>
+          </div>
+          <button
+            className="link"
+            onClick={() => {
+              if (confirm("Reopen this day so it can be edited again?")) reopenDay(date);
+            }}
+          >
+            Reopen
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="today-actions">
+            <button className="action-btn accent" onClick={() => setSavedOpen(true)}>
+              <IconBookmark className="action-ic" width={22} height={22} />
+              <span className="action-title">Saved</span>
+              <span className="action-sub">your foods</span>
+            </button>
+            <button className="action-btn" onClick={() => setPhotoOpen(true)}>
+              <IconCamera className="action-ic" width={22} height={22} />
+              <span className="action-title">Photo</span>
+              <span className="action-sub">AI estimate</span>
+            </button>
+            <button className="action-btn" onClick={() => setQuickOpen(true)}>
+              <IconHash className="action-ic" width={22} height={22} />
+              <span className="action-title">Calories</span>
+              <span className="action-sub">type a number</span>
+            </button>
+          </div>
+
+          <button
+            className="close-day-btn"
+            onClick={() => {
+              if (confirm(`Close ${isToday ? "today" : "this day"}? You won't be able to change it afterwards (you can still reopen it).`)) {
+                closeDay(date);
+              }
+            }}
+          >
+            <IconLock width={15} height={15} />
+            Close {isToday ? "today" : "this day"}
+          </button>
+        </>
+      )}
 
       <h2 className="section-title">
         Log <span className="count">{dayEntries.length}</span>
@@ -93,17 +134,18 @@ export default function TodayPage() {
         <div className="empty">
           Nothing logged yet.
           <br />
-          Tap a button above to start.
+          {closed ? "This day was closed empty." : "Tap a button above to start."}
         </div>
       ) : (
         <ul className="entry-list">
           {dayEntries.map((e) => {
-            const meta =
+            const base =
               e.basis === "per100g"
                 ? `${formatQty(e.quantity)} g · ${formatKcal(e.perUnit)} kcal/100g`
                 : e.basis === "per100ml"
                   ? `${formatQty(e.quantity)} ml · ${formatKcal(e.perUnit)} kcal/100ml`
                   : `${formatQty(e.quantity)} × ${formatKcal(e.perUnit)} kcal`;
+            const meta = e.protein != null && e.protein > 0 ? `${base} · ${formatQty(e.protein)} g P` : base;
             return (
               <li key={e.id} className="entry-row">
                 <div className="entry-main">
@@ -114,9 +156,11 @@ export default function TodayPage() {
                   <div className="entry-meta">{meta}</div>
                 </div>
                 <div className="entry-cal">{formatKcal(e.calories)}</div>
-                <button className="icon-btn danger" onClick={() => deleteEntry(e.id)} aria-label={`Delete ${e.name}`}>
-                  <IconTrash width={18} height={18} />
-                </button>
+                {!closed && (
+                  <button className="icon-btn danger" onClick={() => deleteEntry(e.id)} aria-label={`Delete ${e.name}`}>
+                    <IconTrash width={18} height={18} />
+                  </button>
+                )}
               </li>
             );
           })}

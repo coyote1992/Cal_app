@@ -102,3 +102,10 @@ export const IconHash = (p: P) => (
     <path d="M10 3 8 21M16 3l-2 18M4 8.5h16M3 15.5h16" />
   </Svg>
 );
+
+export const IconLock = (p: P) => (
+  <Svg {...p}>
+    <rect x="4.5" y="11" width="15" height="9" rx="2" />
+    <path d="M8 11V7.5a4 4 0 0 1 8 0V11" />
+  </Svg>
+);

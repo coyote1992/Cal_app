@@ -10,15 +10,18 @@ export const runtime = "nodejs";
 // functions, which would kill the request mid-flight in production.
 export const maxDuration = 60;
 
-const SYSTEM_PROMPT = `You are a nutrition assistant. From the photo, identify the food and estimate its TOTAL calories.
+const SYSTEM_PROMPT = `You are a nutrition assistant. From the photo, identify the food and estimate BOTH its TOTAL calories and its TOTAL protein in grams.
+For EVERY calorie and protein figure, cross-check at least 3 reputable nutrition references (e.g. USDA FoodData Central, official product labels, established food-composition databases) and reconcile them into a single best estimate. Set "sources" to the integer number of distinct references you cross-checked (aim for 3 or more).
 Reply with ONLY a JSON object, no prose or markdown, in exactly this shape:
-{"name":"<short food name>","kcal":<integer total kcal>,"items":[{"name":"<item>","kcal":<int>}],"note":"<one short sentence on assumptions>"}`;
+{"name":"<short food name>","kcal":<integer total kcal>,"protein":<integer total grams of protein>,"items":[{"name":"<item>","kcal":<int>,"protein":<int grams>}],"sources":<int>,"note":"<one short sentence on assumptions>"}`;
 
 interface EstimateResult {
   ok: boolean;
   name: string;
   kcal: number;
-  items: { name: string; kcal: number }[];
+  protein: number;
+  items: { name: string; kcal: number; protein: number }[];
+  sources: number;
   note: string;
   mock: boolean;
   error?: string;
@@ -52,7 +55,9 @@ export async function POST(req: Request) {
       mock: true,
       name: hint?.trim() ? hint.trim() : "Estimated meal",
       kcal: 450,
-      items: [{ name: hint?.trim() || "Meal", kcal: 450 }],
+      protein: 20,
+      items: [{ name: hint?.trim() || "Meal", kcal: 450, protein: 20 }],
+      sources: 3,
       note: "Demo estimate — add an OPENROUTER_API_KEY to switch on real photo analysis.",
     } satisfies EstimateResult);
   }
@@ -63,7 +68,10 @@ export async function POST(req: Request) {
   // one on the non-reasoning path.
   const payload: Record<string, unknown> = {
     model,
-    max_tokens: reasoningOn ? 2000 : 500,
+    // The cross-check-3-sources instruction makes reasoning models think more,
+    // and reasoning tokens count toward this cap — give complex, multi-item
+    // plates enough room that the final JSON isn't truncated mid-object.
+    max_tokens: reasoningOn ? 3000 : 700,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       {
@@ -129,11 +137,19 @@ function parseEstimate(content: string): Omit<EstimateResult, "ok" | "mock" | "e
     const obj: any = JSON.parse(cleaned.slice(start, end + 1));
     const kcal = Math.round(Number(obj.kcal));
     if (!Number.isFinite(kcal)) return null;
+    const protein = Math.max(0, Math.round(Number(obj.protein) || 0));
     const items = Array.isArray(obj.items)
-      ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        obj.items.map((it: any) => ({ name: String(it?.name ?? "Item"), kcal: Math.round(Number(it?.kcal) || 0) }))
+      ? obj.items.map((it: unknown) => {
+          const o = (it ?? {}) as Record<string, unknown>;
+          return {
+            name: String(o.name ?? "Item"),
+            kcal: Math.round(Number(o.kcal) || 0),
+            protein: Math.max(0, Math.round(Number(o.protein) || 0)),
+          };
+        })
       : [];
-    return { name: String(obj.name ?? "Estimated meal"), kcal, items, note: String(obj.note ?? "") };
+    const sources = Math.max(0, Math.round(Number(obj.sources) || 0));
+    return { name: String(obj.name ?? "Estimated meal"), kcal, protein, items, sources, note: String(obj.note ?? "") };
   } catch {
     return null;
   }

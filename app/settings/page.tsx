@@ -25,6 +25,7 @@ export default function SettingsPage() {
   } = useStore();
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [budgetStr, setBudgetStr] = useState<string | null>(null);
+  const [proteinStr, setProteinStr] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [codeInput, setCodeInput] = useState("");
   const [syncBusy, setSyncBusy] = useState(false);
@@ -33,10 +34,16 @@ export default function SettingsPage() {
   if (!hydrated) return <div className="loading">Loading…</div>;
 
   const budgetValue = budgetStr ?? String(settings.dailyBudget);
+  const proteinValue = proteinStr ?? String(settings.proteinGoal);
 
   function commitBudget(v: string) {
     const n = Math.round(Number(v));
     if (Number.isFinite(n) && n >= 0) updateSettings({ dailyBudget: n });
+  }
+
+  function commitProtein(v: string) {
+    const n = Math.round(Number(v));
+    if (Number.isFinite(n) && n >= 0) updateSettings({ proteinGoal: n });
   }
 
   function doExport() {
@@ -108,9 +115,9 @@ export default function SettingsPage() {
     <div>
       <h1 className="page-title">Settings</h1>
 
-      <h2 className="section-title">Daily budget</h2>
+      <h2 className="section-title">Daily targets</h2>
       <div className="card">
-        <div className="field" style={{ marginBottom: 0 }}>
+        <div className="field">
           <label htmlFor="budget">Calorie target per day</label>
           <input
             id="budget"
@@ -124,7 +131,23 @@ export default function SettingsPage() {
             }}
             onBlur={() => setBudgetStr(null)}
           />
-          <div className="hint">Used for the ring and the “over budget” markers.</div>
+          <div className="hint">Used for the calorie ring and the “over budget” markers.</div>
+        </div>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label htmlFor="protein-goal">Protein target per day (g)</label>
+          <input
+            id="protein-goal"
+            className="input"
+            type="number"
+            inputMode="numeric"
+            value={proteinValue}
+            onChange={(e) => {
+              setProteinStr(e.target.value);
+              commitProtein(e.target.value);
+            }}
+            onBlur={() => setProteinStr(null)}
+          />
+          <div className="hint">Used for the protein ring on the Today screen.</div>
         </div>
       </div>
 

@@ -77,6 +77,14 @@ export default function FoodsPage() {
             else updateFood(editing.id, input);
             setEditing(null);
           }}
+          onDelete={
+            editing !== "new"
+              ? () => {
+                  deleteFood(editing.id);
+                  setEditing(null);
+                }
+              : undefined
+          }
         />
       )}
     </div>
@@ -88,15 +96,18 @@ function FoodEditor({
   options,
   onClose,
   onSave,
+  onDelete,
 }: {
   food: Food | null;
   options: string[];
   onClose: () => void;
   onSave: (input: FoodInput) => void;
+  onDelete?: () => void;
 }) {
   const [name, setName] = useState(food?.name ?? "");
   const [basis, setBasis] = useState<CalorieBasis>(food?.basis ?? "serving");
   const [rate, setRate] = useState(food ? String(food.calories) : "");
+  const [protein, setProtein] = useState(food?.protein != null ? String(food.protein) : "");
   const [unit, setUnit] = useState(food?.unit ?? "");
   const [category, setCategory] = useState(food?.category ?? "Other");
 
@@ -162,6 +173,25 @@ function FoodEditor({
           />
         </div>
 
+        <div className="field">
+          <label htmlFor="f-protein">
+            {basis === "per100g"
+              ? "Protein per 100 g (g)"
+              : basis === "per100ml"
+                ? "Protein per 100 ml (g)"
+                : "Protein per serving (g)"}
+          </label>
+          <input
+            id="f-protein"
+            className="input"
+            type="number"
+            inputMode="decimal"
+            value={protein}
+            onChange={(e) => setProtein(e.target.value)}
+            placeholder="optional, e.g. 31"
+          />
+        </div>
+
         {basis === "serving" && (
           <div className="field">
             <label htmlFor="f-unit">Serving label (optional)</label>
@@ -183,10 +213,31 @@ function FoodEditor({
         <button
           className="btn btn-primary"
           disabled={!valid}
-          onClick={() => onSave({ name, category, basis, calories: r, unit: basis === "serving" ? unit : undefined })}
+          onClick={() =>
+            onSave({
+              name,
+              category,
+              basis,
+              calories: r,
+              protein: protein.trim() ? Number(protein) : undefined,
+              unit: basis === "serving" ? unit : undefined,
+            })
+          }
         >
           {food ? "Save changes" : "Add food"}
         </button>
+
+        {onDelete && (
+          <button
+            className="btn btn-danger btn-block"
+            style={{ marginTop: 10 }}
+            onClick={() => {
+              if (confirm(`Delete “${food?.name}”? Days you've already logged won't change.`)) onDelete();
+            }}
+          >
+            <IconTrash width={18} height={18} /> Delete food
+          </button>
+        )}
       </div>
     </div>
   );

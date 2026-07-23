@@ -13,6 +13,7 @@ export default function AmountEditor({
   sub,
   basis,
   rate,
+  proteinRate,
   onAdd,
   addLabel = "Add",
 }: {
@@ -20,12 +21,15 @@ export default function AmountEditor({
   sub?: string;
   basis: CalorieBasis;
   rate: number;
+  /** Protein grams on the same basis; when set, a live protein total is shown. */
+  proteinRate?: number;
   onAdd: (amount: number) => void;
   addLabel?: string;
 }) {
   const [raw, setRaw] = useState<string>(() => String(defaultAmount(basis)));
   const amount = Math.max(0, Number(raw) || 0);
   const total = computeCalories(basis, rate, amount);
+  const proteinTotal = proteinRate != null ? computeCalories(basis, proteinRate, amount) : null;
   const unit = amountUnit(basis);
 
   return (
@@ -37,6 +41,9 @@ export default function AmountEditor({
         </div>
         <div className="ae-total">
           {formatKcal(total)} <small>kcal</small>
+          {proteinTotal != null && proteinTotal > 0 && (
+            <span className="ae-protein">{formatQty(proteinTotal)} g protein</span>
+          )}
         </div>
       </div>
 

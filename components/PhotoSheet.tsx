@@ -9,13 +9,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { useStore } from "@/app/store";
-import { formatKcal } from "@/lib/util";
+import { formatKcal, formatQty } from "@/lib/util";
 import { IconCamera } from "./icons";
 
 interface Estimate {
   name: string;
   kcal: number;
-  items: { name: string; kcal: number }[];
+  protein: number;
+  items: { name: string; kcal: number; protein: number }[];
+  sources: number;
   note: string;
   mock: boolean;
 }
@@ -72,6 +74,7 @@ export default function PhotoSheet({
   const [result, setResult] = useState<Estimate | null>(null);
   const [name, setName] = useState("");
   const [kcal, setKcal] = useState("");
+  const [protein, setProtein] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -83,6 +86,7 @@ export default function PhotoSheet({
       setResult(null);
       setName("");
       setKcal("");
+      setProtein("");
     }
   }, [open]);
 
@@ -130,6 +134,7 @@ export default function PhotoSheet({
       setResult(data as Estimate);
       setName(data.name);
       setKcal(String(data.kcal));
+      setProtein(String(data.protein ?? 0));
       setStatus("done");
     } catch (err) {
       setError((err as Error).message || "Network error.");
@@ -140,12 +145,14 @@ export default function PhotoSheet({
   function addToLog() {
     const k = Math.round(Number(kcal));
     if (!Number.isFinite(k) || k <= 0) return;
+    const p = Math.round(Number(protein));
     addEntry({
       date,
       name: name.trim() || "Photo estimate",
       category: "Other",
       basis: "serving",
       perUnit: k,
+      proteinPerUnit: Number.isFinite(p) && p > 0 ? p : undefined,
       quantity: 1,
       source: "photo",
       note: result?.note,
@@ -217,11 +224,20 @@ export default function PhotoSheet({
                   <label htmlFor="ph-name">Name</label>
                   <input id="ph-name" className="input" value={name} onChange={(e) => setName(e.target.value)} />
                 </div>
-                <div className="field">
-                  <label htmlFor="ph-kcal">Calories</label>
-                  <div className="ae-input-wrap wide">
-                    <input id="ph-kcal" type="number" inputMode="numeric" value={kcal} onChange={(e) => setKcal(e.target.value)} />
-                    <span className="ae-unit">kcal</span>
+                <div className="ph-macros">
+                  <div className="field">
+                    <label htmlFor="ph-kcal">Calories</label>
+                    <div className="ae-input-wrap wide">
+                      <input id="ph-kcal" type="number" inputMode="numeric" value={kcal} onChange={(e) => setKcal(e.target.value)} />
+                      <span className="ae-unit">kcal</span>
+                    </div>
+                  </div>
+                  <div className="field">
+                    <label htmlFor="ph-protein">Protein</label>
+                    <div className="ae-input-wrap wide">
+                      <input id="ph-protein" type="number" inputMode="numeric" value={protein} onChange={(e) => setProtein(e.target.value)} />
+                      <span className="ae-unit">g</span>
+                    </div>
                   </div>
                 </div>
                 {result.items.length > 1 && (
@@ -229,7 +245,9 @@ export default function PhotoSheet({
                     {result.items.map((it, i) => (
                       <div key={i} className="est-item">
                         <span>{it.name}</span>
-                        <span>{formatKcal(it.kcal)} kcal</span>
+                        <span>
+                          {formatKcal(it.kcal)} kcal{it.protein > 0 ? ` · ${formatQty(it.protein)} g` : ""}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -239,6 +257,11 @@ export default function PhotoSheet({
                     {result.note}
                   </div>
                 )}
+                {result.sources > 0 && (
+                  <div className="sources-line">
+                    Cross-checked {result.sources} {result.sources === 1 ? "source" : "sources"} for calories & protein
+                  </div>
+                )}
                 <button className="btn btn-primary" style={{ marginTop: 12 }} disabled={!(kNum > 0)} onClick={addToLog}>
                   Add to today{kNum > 0 ? ` · ${formatKcal(kNum)} kcal` : ""}
                 </button>
@@ -246,10 +269,6 @@ export default function PhotoSheet({
             )}
           </>
         )}
-
-        <div className="note" style={{ marginTop: 14 }}>
-          Your photo is sent to the AI model only when you tap “Estimate”. Until an API key is configured you’ll get a demo number so you can try the flow.
-        </div>
       </div>
     </div>
   );

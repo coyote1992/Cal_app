@@ -87,6 +87,7 @@ export default function SavedSheet({
       category: selected.category,
       basis: selected.basis,
       perUnit: selected.calories,
+      proteinPerUnit: selected.protein,
       quantity: amount,
       source: "quick",
       foodId: selected.id,
@@ -167,6 +168,7 @@ export default function SavedSheet({
             sub={rateLabel(selected)}
             basis={selected.basis}
             rate={selected.calories}
+            proteinRate={selected.protein}
             onAdd={add}
           />
         )}

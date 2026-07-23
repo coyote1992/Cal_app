@@ -6,48 +6,49 @@ import type { AppData, CalorieBasis, Entry, Food, Settings } from "./types";
 import { computeCalories, uid } from "./util";
 
 const STORAGE_KEY = "calorie-tracker:v1";
-export const DATA_VERSION = 4;
+export const DATA_VERSION = 5;
 
-export const DEFAULT_SETTINGS: Settings = { dailyBudget: 2000, weekStartsOn: 1 };
+export const DEFAULT_SETTINGS: Settings = { dailyBudget: 2000, proteinGoal: 160, weekStartsOn: 1 };
 
-type PresetFood = { name: string; category: string; basis: CalorieBasis; calories: number; unit?: string };
+type PresetFood = { name: string; category: string; basis: CalorieBasis; calories: number; protein: number; unit?: string };
 
 // The user's own food list (imported from Update1/Munkafüzet1.xlsx). Seeded on a
-// fresh install and merged into existing data on upgrade to v3.
+// fresh install and merged into existing data on upgrade to v3. Protein grams
+// (same basis as calories) added in v5 from standard references; all editable.
 const PRESET_FOODS: PresetFood[] = [
   // Drinks
-  { name: "Milk", category: "Drinks", basis: "per100ml", calories: 50 },
-  { name: "Alpro Rice Drink", category: "Drinks", basis: "per100ml", calories: 48 },
-  { name: "Red bull", category: "Drinks", basis: "serving", calories: 110, unit: "250 ml" },
-  { name: "White Wine", category: "Drinks", basis: "serving", calories: 80, unit: "1 dl" },
-  { name: "Beer", category: "Drinks", basis: "serving", calories: 220, unit: "5 dl" },
+  { name: "Milk", category: "Drinks", basis: "per100ml", calories: 50, protein: 3 },
+  { name: "Alpro Rice Drink", category: "Drinks", basis: "per100ml", calories: 48, protein: 0 },
+  { name: "Red bull", category: "Drinks", basis: "serving", calories: 110, protein: 0, unit: "250 ml" },
+  { name: "White Wine", category: "Drinks", basis: "serving", calories: 80, protein: 0, unit: "1 dl" },
+  { name: "Beer", category: "Drinks", basis: "serving", calories: 220, protein: 3, unit: "5 dl" },
   // Meat
-  { name: "Cooked Chicken", category: "Meat", basis: "per100g", calories: 165 },
-  { name: "Cooked Rice", category: "Meat", basis: "per100g", calories: 130 },
-  { name: "Salmon", category: "Meat", basis: "per100g", calories: 208 },
-  { name: "Bacon (with fat)", category: "Meat", basis: "per100g", calories: 540 },
-  { name: "Mashed potatoes", category: "Meat", basis: "per100g", calories: 115 },
-  { name: "Tonhal", category: "Meat", basis: "serving", calories: 110, unit: "80 g can" },
-  { name: "Medium Egg", category: "Meat", basis: "serving", calories: 64, unit: "piece" },
+  { name: "Cooked Chicken", category: "Meat", basis: "per100g", calories: 165, protein: 31 },
+  { name: "Cooked Rice", category: "Meat", basis: "per100g", calories: 130, protein: 3 },
+  { name: "Salmon", category: "Meat", basis: "per100g", calories: 208, protein: 22 },
+  { name: "Bacon (with fat)", category: "Meat", basis: "per100g", calories: 540, protein: 12 },
+  { name: "Mashed potatoes", category: "Meat", basis: "per100g", calories: 115, protein: 2 },
+  { name: "Tonhal", category: "Meat", basis: "serving", calories: 110, protein: 20, unit: "80 g can" },
+  { name: "Medium Egg", category: "Meat", basis: "serving", calories: 64, protein: 6, unit: "piece" },
   // Other
-  { name: "Pasta (dry)", category: "Other", basis: "per100g", calories: 350 },
-  { name: "Parmesan cheese", category: "Other", basis: "per100g", calories: 430 },
-  { name: "Kenyér", category: "Other", basis: "per100g", calories: 266 },
-  { name: "Yoghurt", category: "Other", basis: "per100g", calories: 100 },
-  { name: "Pufi rizs", category: "Other", basis: "serving", calories: 25, unit: "piece" },
-  { name: "Ketchup", category: "Other", basis: "serving", calories: 20, unit: "tbsp" },
-  { name: "Mayonaise", category: "Other", basis: "serving", calories: 100, unit: "tbsp" },
-  { name: "Olive Oil", category: "Other", basis: "serving", calories: 120, unit: "spoon" },
-  { name: "Butter", category: "Other", basis: "serving", calories: 72, unit: "10 g" },
+  { name: "Pasta (dry)", category: "Other", basis: "per100g", calories: 350, protein: 12 },
+  { name: "Parmesan cheese", category: "Other", basis: "per100g", calories: 430, protein: 38 },
+  { name: "Kenyér", category: "Other", basis: "per100g", calories: 266, protein: 9 },
+  { name: "Yoghurt", category: "Other", basis: "per100g", calories: 100, protein: 5 },
+  { name: "Pufi rizs", category: "Other", basis: "serving", calories: 25, protein: 1, unit: "piece" },
+  { name: "Ketchup", category: "Other", basis: "serving", calories: 20, protein: 0, unit: "tbsp" },
+  { name: "Mayonaise", category: "Other", basis: "serving", calories: 100, protein: 0, unit: "tbsp" },
+  { name: "Olive Oil", category: "Other", basis: "serving", calories: 120, protein: 0, unit: "spoon" },
+  { name: "Butter", category: "Other", basis: "serving", calories: 72, protein: 0, unit: "10 g" },
   // Fruits
-  { name: "Banán", category: "Fruits", basis: "serving", calories: 90, unit: "piece" },
-  { name: "Alma", category: "Fruits", basis: "serving", calories: 100, unit: "piece" },
-  { name: "Mandarin", category: "Fruits", basis: "serving", calories: 40, unit: "piece" },
-  { name: "Körte", category: "Fruits", basis: "serving", calories: 100, unit: "piece" },
+  { name: "Banán", category: "Fruits", basis: "serving", calories: 90, protein: 1, unit: "piece" },
+  { name: "Alma", category: "Fruits", basis: "serving", calories: 100, protein: 1, unit: "piece" },
+  { name: "Mandarin", category: "Fruits", basis: "serving", calories: 40, protein: 1, unit: "piece" },
+  { name: "Körte", category: "Fruits", basis: "serving", calories: 100, protein: 1, unit: "piece" },
   // Sweets
-  { name: "Gelato", category: "Sweets", basis: "serving", calories: 130, unit: "scoop" },
-  { name: "Monin syrup", category: "Sweets", basis: "serving", calories: 20, unit: "tsp" },
-  { name: "Honey", category: "Sweets", basis: "serving", calories: 20, unit: "tsp" },
+  { name: "Gelato", category: "Sweets", basis: "serving", calories: 130, protein: 2, unit: "scoop" },
+  { name: "Monin syrup", category: "Sweets", basis: "serving", calories: 20, protein: 0, unit: "tsp" },
+  { name: "Honey", category: "Sweets", basis: "serving", calories: 20, protein: 0, unit: "tsp" },
 ];
 
 // Names of the original placeholder starter foods; removed on upgrade to v3 so
@@ -94,7 +95,7 @@ function presetToFood(p: PresetFood, i: number): Food {
 }
 
 export function emptyData(): AppData {
-  return { version: DATA_VERSION, foods: [], entries: [], settings: { ...DEFAULT_SETTINGS }, updatedAt: 0 };
+  return { version: DATA_VERSION, foods: [], entries: [], settings: { ...DEFAULT_SETTINGS }, closedDays: [], updatedAt: 0 };
 }
 
 /** The user's food list, seeded on the very first run (all editable/deletable). */
@@ -104,19 +105,25 @@ export function seededData(): AppData {
     foods: PRESET_FOODS.map(presetToFood),
     entries: [],
     settings: { ...DEFAULT_SETTINGS },
+    closedDays: [],
     updatedAt: Date.now(),
   };
 }
 
+/** Preset protein by lowercased name, used to backfill existing foods on v5. */
+const PRESET_PROTEIN = new Map(PRESET_FOODS.map((p) => [p.name.toLowerCase(), p.protein]));
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function normalizeFood(f: any): Food {
   const basis = coerceBasis(f.basis);
+  const protein = Number(f.protein);
   return {
     id: (f.id as string) ?? uid(),
     name: String(f.name ?? "Food"),
     category: typeof f.category === "string" && f.category.trim() ? f.category : "Other",
     basis,
     calories: Number(f.calories) || 0,
+    protein: Number.isFinite(protein) ? protein : undefined,
     unit: (f.unit as string) || undefined,
     createdAt: (f.createdAt as number) ?? Date.now(),
   };
@@ -128,6 +135,7 @@ function normalizeEntry(e: any): Entry {
   const perUnit = Number(e.perUnit) || 0;
   const quantity = Number(e.quantity) || 0;
   const calories = Number.isFinite(Number(e.calories)) ? Number(e.calories) : computeCalories(basis, perUnit, quantity);
+  const protein = Number(e.protein);
   return {
     id: (e.id as string) ?? uid(),
     date: String(e.date ?? ""),
@@ -137,6 +145,7 @@ function normalizeEntry(e: any): Entry {
     perUnit,
     quantity,
     calories,
+    protein: Number.isFinite(protein) ? protein : undefined,
     foodId: (e.foodId as string) || undefined,
     source: (e.source as Entry["source"]) ?? "manual",
     note: (e.note as string) || undefined,
@@ -166,12 +175,24 @@ export function normalize(raw: unknown): AppData {
   if (incomingVersion < 4) {
     foods = applyV4Corrections(foods);
   }
+  // v5 upgrade: backfill protein for foods matching a preset by name, but only
+  // where the user hasn't already set one (never overwrites their own value).
+  if (incomingVersion < 5) {
+    foods = foods.map((f) =>
+      f.protein == null && PRESET_PROTEIN.has(f.name.trim().toLowerCase())
+        ? { ...f, protein: PRESET_PROTEIN.get(f.name.trim().toLowerCase()) }
+        : f,
+    );
+  }
+
+  const closedDays = Array.isArray(d.closedDays) ? d.closedDays.filter((x): x is string => typeof x === "string") : [];
 
   return {
     version: DATA_VERSION,
     foods,
     entries: Array.isArray(d.entries) ? d.entries.map((e) => normalizeEntry(e)) : base.entries,
     settings: { ...base.settings, ...(d.settings ?? {}) },
+    closedDays,
     updatedAt: Number(d.updatedAt) || Date.now(),
   };
 }

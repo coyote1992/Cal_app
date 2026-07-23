@@ -145,10 +145,17 @@ function WeekView({ entries, budget, weekStartsOn, anchor, setAnchor }: ViewProp
         </div>
       </div>
 
-      <div className="tiles" style={{ marginTop: 14, gridTemplateColumns: "1fr 1fr" }}>
+      <div className="tiles" style={{ marginTop: 14 }}>
         <div className="tile">
           <div className="tile-num">{summary.loggedDays > 0 ? formatKcal(summary.avgPerLoggedDay) : "–"}</div>
-          <div className="tile-lbl">Avg / logged day</div>
+          <div className="tile-lbl">Avg kcal / day</div>
+        </div>
+        <div className="tile">
+          <div className="tile-num">
+            {summary.loggedDays > 0 ? formatKcal(summary.avgProteinPerLoggedDay) : "–"}
+            {summary.loggedDays > 0 && <span style={{ fontSize: 13, color: "var(--muted)" }}> g</span>}
+          </div>
+          <div className="tile-lbl">Avg protein / day</div>
         </div>
         <div className="tile">
           <div className="tile-num">
@@ -208,10 +215,17 @@ function MonthView({ entries, budget, weekStartsOn, anchor, setAnchor }: ViewPro
         </button>
       </div>
 
-      <div className="tiles" style={{ gridTemplateColumns: "1fr 1fr" }}>
+      <div className="tiles">
         <div className="tile">
           <div className="tile-num">{summary.loggedDays > 0 ? formatKcal(summary.avgPerLoggedDay) : "–"}</div>
-          <div className="tile-lbl">Avg / logged day</div>
+          <div className="tile-lbl">Avg kcal / day</div>
+        </div>
+        <div className="tile">
+          <div className="tile-num">
+            {summary.loggedDays > 0 ? formatKcal(summary.avgProteinPerLoggedDay) : "–"}
+            {summary.loggedDays > 0 && <span style={{ fontSize: 13, color: "var(--muted)" }}> g</span>}
+          </div>
+          <div className="tile-lbl">Avg protein / day</div>
         </div>
         <div className="tile">
           <div className="tile-num">

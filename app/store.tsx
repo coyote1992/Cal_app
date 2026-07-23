@@ -29,6 +29,7 @@ export interface FoodInput {
   category: string;
   basis: CalorieBasis;
   calories: number;
+  protein?: number;
   unit?: string;
 }
 
@@ -39,6 +40,8 @@ export interface EntryInput {
   basis: CalorieBasis;
   /** Rate: kcal per serving or per 100 g. */
   perUnit: number;
+  /** Protein rate on the same basis (per serving or per 100 g/ml). Optional. */
+  proteinPerUnit?: number;
   /** Amount: servings or grams. */
   quantity: number;
   source: EntrySource;
@@ -57,6 +60,10 @@ interface StoreValue {
   addEntry: (input: EntryInput) => void;
   deleteEntry: (id: string) => void;
   updateSettings: (patch: Partial<Settings>) => void;
+  closedDays: string[];
+  isDayClosed: (date: string) => boolean;
+  closeDay: (date: string) => void;
+  reopenDay: (date: string) => void;
   replaceAll: (data: AppData) => void;
   clearAll: () => void;
   exportJSON: () => string;
@@ -70,6 +77,10 @@ interface StoreValue {
 
 const StoreContext = createContext<StoreValue | null>(null);
 
+function cleanProtein(v: number | undefined): number | undefined {
+  return v != null && Number.isFinite(v) && v > 0 ? Math.max(0, Math.round(v)) : undefined;
+}
+
 function makeFood(input: FoodInput): Food {
   return {
     id: uid(),
@@ -77,6 +88,7 @@ function makeFood(input: FoodInput): Food {
     category: input.category.trim() || "Other",
     basis: input.basis,
     calories: Math.max(0, Math.round(input.calories)),
+    protein: cleanProtein(input.protein),
     unit: input.basis === "serving" ? input.unit?.trim() || undefined : undefined,
     createdAt: Date.now(),
   };
@@ -165,6 +177,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               category: patch.category.trim() || "Other",
               basis: patch.basis,
               calories: Math.max(0, Math.round(patch.calories)),
+              protein: cleanProtein(patch.protein),
               unit: patch.basis === "serving" ? patch.unit?.trim() || undefined : undefined,
             }
           : f,
@@ -179,6 +192,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const addEntry = useCallback((input: EntryInput) => {
     const quantity = input.quantity > 0 ? input.quantity : isPer100(input.basis) ? 100 : 1;
+    const protein =
+      input.proteinPerUnit != null && Number.isFinite(input.proteinPerUnit)
+        ? computeCalories(input.basis, input.proteinPerUnit, quantity)
+        : undefined;
     setData((d) => ({
       ...d,
       entries: [
@@ -192,6 +209,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           perUnit: Math.round(input.perUnit),
           quantity,
           calories: computeCalories(input.basis, input.perUnit, quantity),
+          protein,
           source: input.source,
           foodId: input.foodId,
           note: input.note,
@@ -208,6 +226,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const updateSettings = useCallback((patch: Partial<Settings>) => {
     setData((d) => ({ ...d, settings: { ...d.settings, ...patch }, updatedAt: Date.now() }));
+  }, []);
+
+  const isDayClosed = useCallback((date: string) => data.closedDays.includes(date), [data.closedDays]);
+
+  const closeDay = useCallback((date: string) => {
+    setData((d) =>
+      d.closedDays.includes(date)
+        ? d
+        : { ...d, closedDays: [...d.closedDays, date], updatedAt: Date.now() },
+    );
+  }, []);
+
+  const reopenDay = useCallback((date: string) => {
+    setData((d) => ({ ...d, closedDays: d.closedDays.filter((x) => x !== date), updatedAt: Date.now() }));
   }, []);
 
   const replaceAll = useCallback((next: AppData) => setData({ ...next, updatedAt: Date.now() }), []);
@@ -264,6 +296,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     addEntry,
     deleteEntry,
     updateSettings,
+    closedDays: data.closedDays,
+    isDayClosed,
+    closeDay,
+    reopenDay,
     replaceAll,
     clearAll,
     exportJSON,

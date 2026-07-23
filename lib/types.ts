@@ -19,6 +19,8 @@ export interface Food {
   basis: CalorieBasis;
   /** kcal per serving (basis "serving") OR per 100 g (basis "per100g"). */
   calories: number;
+  /** Grams of protein on the same basis as `calories`. Optional (older foods lack it). */
+  protein?: number;
   /** Serving label for "serving" basis, e.g. "medium", "cup", "slice". */
   unit?: string;
   createdAt: number;
@@ -41,6 +43,8 @@ export interface Entry {
   quantity: number;
   /** TOTAL calories for this entry, pre-computed. */
   calories: number;
+  /** TOTAL grams of protein for this entry, pre-computed. Optional. */
+  protein?: number;
   foodId?: ID;
   source: EntrySource;
   /** Free-form note, e.g. an LLM's reasoning for a photo estimate. */
@@ -51,6 +55,8 @@ export interface Entry {
 export interface Settings {
   /** Daily calorie budget/target. */
   dailyBudget: number;
+  /** Daily protein target in grams. */
+  proteinGoal: number;
   /** 0 = week starts Sunday, 1 = week starts Monday. */
   weekStartsOn: 0 | 1;
 }
@@ -60,6 +66,8 @@ export interface AppData {
   foods: Food[];
   entries: Entry[];
   settings: Settings;
+  /** ISO days (YYYY-MM-DD) the user has "closed" — locked from further edits. */
+  closedDays: string[];
   /** Last-modified time (ms). Used to resolve conflicts when cloud-syncing across devices. */
   updatedAt: number;
 }

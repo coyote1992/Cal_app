@@ -52,9 +52,11 @@ export function quickAmounts(basis: CalorieBasis): number[] {
   return [0.5, 1, 1.5, 2, 3];
 }
 
-/** "105 kcal / medium", "165 kcal / 100 g", or "50 kcal / 100 ml". */
-export function rateLabel(food: Pick<Food, "basis" | "calories" | "unit">): string {
-  if (food.basis === "per100g") return `${formatKcal(food.calories)} kcal / 100 g`;
-  if (food.basis === "per100ml") return `${formatKcal(food.calories)} kcal / 100 ml`;
-  return `${formatKcal(food.calories)} kcal / ${food.unit || "serving"}`;
+/** "105 kcal / medium", "165 kcal / 100 g", or "50 kcal / 100 ml", with a
+ *  "· 31 g protein" suffix when the food has a protein value. */
+export function rateLabel(food: Pick<Food, "basis" | "calories" | "unit" | "protein">): string {
+  const per =
+    food.basis === "per100g" ? "100 g" : food.basis === "per100ml" ? "100 ml" : food.unit || "serving";
+  const base = `${formatKcal(food.calories)} kcal / ${per}`;
+  return food.protein != null && food.protein > 0 ? `${base} · ${formatQty(food.protein)} g protein` : base;
 }

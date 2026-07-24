@@ -109,3 +109,15 @@ export const IconLock = (p: P) => (
     <path d="M8 11V7.5a4 4 0 0 1 8 0V11" />
   </Svg>
 );
+
+export const IconDumbbell = (p: P) => (
+  <Svg {...p}>
+    <path d="M6.5 8v8M4 9.5v5M17.5 8v8M20 9.5v5M6.5 12h11" />
+  </Svg>
+);
+
+export const IconPulse = (p: P) => (
+  <Svg {...p}>
+    <path d="M3 12h4l2-6 4 12 2-6h6" />
+  </Svg>
+);

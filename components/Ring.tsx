@@ -35,7 +35,7 @@ export default function Ring({
   const bad = over && overIsBad;
   const percentText = goal > 0 ? `${Math.round(ratio * 100)}%` : "—";
   // Scale the centre number with the ring so the small protein ring stays tidy.
-  const valueSize = Math.round(size * 0.23);
+  const valueSize = Math.round(size * 0.19);
 
   return (
     <div className="ring-wrap" style={{ width: size, height: size }}>

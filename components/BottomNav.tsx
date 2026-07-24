@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { IconToday, IconFoods, IconStats, IconSettings } from "./icons";
+import { IconToday, IconFoods, IconDumbbell, IconStats, IconSettings } from "./icons";
 
 const items = [
   { href: "/", label: "Today", Icon: IconToday },
   { href: "/foods", label: "Foods", Icon: IconFoods },
+  { href: "/gym", label: "Gym", Icon: IconDumbbell },
   { href: "/stats", label: "Stats", Icon: IconStats },
   { href: "/settings", label: "Settings", Icon: IconSettings },
 ] as const;

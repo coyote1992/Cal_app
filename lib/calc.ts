@@ -44,6 +44,32 @@ export interface RangeSummary {
   avgProteinPerLoggedDay: number;
 }
 
+export interface ClosedSummary {
+  /** Number of closed days in the range ("days logged" = close-button presses). */
+  closedDays: number;
+  avgKcal: number;
+  avgProtein: number;
+  /** Closed days whose calories exceeded the budget. */
+  daysOver: number;
+}
+
+/** Averages measured over the days the user actually closed, not every day touched. */
+export function closedSummary(entries: Entry[], closedInRange: string[], budget: number): ClosedSummary {
+  const kByDate = totalsByDate(entries);
+  const pByDate = proteinByDate(entries);
+  let k = 0;
+  let p = 0;
+  let daysOver = 0;
+  for (const d of closedInRange) {
+    const dk = kByDate.get(d) ?? 0;
+    k += dk;
+    p += pByDate.get(d) ?? 0;
+    if (budget > 0 && dk > budget) daysOver += 1;
+  }
+  const n = closedInRange.length;
+  return { closedDays: n, avgKcal: n ? Math.round(k / n) : 0, avgProtein: n ? Math.round(p / n) : 0, daysOver };
+}
+
 export function summarizeRange(
   entries: Entry[],
   isoDays: string[],

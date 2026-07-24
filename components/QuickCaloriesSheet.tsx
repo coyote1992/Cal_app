@@ -18,11 +18,13 @@ export default function QuickCaloriesSheet({
 }) {
   const { addEntry } = useStore();
   const [kcal, setKcal] = useState("");
+  const [protein, setProtein] = useState("");
   const [name, setName] = useState("");
 
   useEffect(() => {
     if (open) {
       setKcal("");
+      setProtein("");
       setName("");
     }
   }, [open]);
@@ -41,12 +43,14 @@ export default function QuickCaloriesSheet({
 
   function add() {
     if (!valid) return;
+    const p = Math.round(Number(protein));
     addEntry({
       date,
       name: name.trim() || "Quick calories",
       category: "Other",
       basis: "serving",
       perUnit: k,
+      proteinPerUnit: Number.isFinite(p) && p > 0 ? p : undefined,
       quantity: 1,
       source: "manual",
     });
@@ -63,19 +67,35 @@ export default function QuickCaloriesSheet({
           </button>
         </div>
 
-        <div className="field">
-          <label htmlFor="qc-kcal">Calories</label>
-          <div className="ae-input-wrap wide">
-            <input
-              id="qc-kcal"
-              type="number"
-              inputMode="numeric"
-              placeholder="0"
-              value={kcal}
-              onChange={(e) => setKcal(e.target.value)}
-              autoFocus
-            />
-            <span className="ae-unit">kcal</span>
+        <div className="ph-macros">
+          <div className="field">
+            <label htmlFor="qc-kcal">Calories</label>
+            <div className="ae-input-wrap wide">
+              <input
+                id="qc-kcal"
+                type="number"
+                inputMode="numeric"
+                placeholder="0"
+                value={kcal}
+                onChange={(e) => setKcal(e.target.value)}
+                autoFocus
+              />
+              <span className="ae-unit">kcal</span>
+            </div>
+          </div>
+          <div className="field">
+            <label htmlFor="qc-protein">Protein</label>
+            <div className="ae-input-wrap wide">
+              <input
+                id="qc-protein"
+                type="number"
+                inputMode="numeric"
+                placeholder="0"
+                value={protein}
+                onChange={(e) => setProtein(e.target.value)}
+              />
+              <span className="ae-unit">g</span>
+            </div>
           </div>
         </div>
 

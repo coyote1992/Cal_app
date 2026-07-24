@@ -6,8 +6,22 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import type { AppData, CalorieBasis, Entry, EntrySource, Food, Settings } from "@/lib/types";
+import type {
+  AppData,
+  CalorieBasis,
+  CardioIntensity,
+  Entry,
+  EntrySource,
+  Exercise,
+  ExerciseCategory,
+  ExerciseKind,
+  Food,
+  Settings,
+  Workout,
+  WorkoutExercise,
+} from "@/lib/types";
 import { emptyData, loadData, normalize, saveData } from "@/lib/storage";
+import { lastLogForExercise } from "@/lib/gym";
 import { computeCalories, isPer100, uid } from "@/lib/util";
 import {
   clearSyncCode,
@@ -31,6 +45,41 @@ export interface FoodInput {
   calories: number;
   protein?: number;
   unit?: string;
+}
+
+export interface ExerciseInput {
+  name: string;
+  category: ExerciseCategory;
+  kind: ExerciseKind;
+}
+
+/** Fields the user can change on a logged exercise (only the relevant ones apply). */
+export interface WorkoutExercisePatch {
+  weight?: number;
+  sets?: number;
+  intensity?: CardioIntensity;
+  minutes?: number;
+}
+
+function applyWorkoutPatch(e: WorkoutExercise, patch: WorkoutExercisePatch): WorkoutExercise {
+  if (e.kind === "strength") {
+    return {
+      ...e,
+      weight:
+        patch.weight !== undefined ? (Number.isFinite(patch.weight) && patch.weight! > 0 ? patch.weight : undefined) : e.weight,
+      sets: patch.sets !== undefined ? (patch.sets === 2 ? 2 : 3) : e.sets,
+    };
+  }
+  return {
+    ...e,
+    intensity: patch.intensity ?? e.intensity,
+    minutes:
+      patch.minutes !== undefined
+        ? Number.isFinite(patch.minutes) && patch.minutes! > 0
+          ? Math.round(patch.minutes!)
+          : undefined
+        : e.minutes,
+  };
 }
 
 export interface EntryInput {
@@ -60,6 +109,17 @@ interface StoreValue {
   addEntry: (input: EntryInput) => void;
   deleteEntry: (id: string) => void;
   updateSettings: (patch: Partial<Settings>) => void;
+  exercises: Exercise[];
+  workouts: Workout[];
+  addExercise: (input: ExerciseInput) => Exercise;
+  updateExercise: (id: string, patch: ExerciseInput) => void;
+  deleteExercise: (id: string) => void;
+  addExerciseToWorkout: (
+    date: string,
+    exercise: { id?: string; name: string; category: ExerciseCategory; kind: ExerciseKind },
+  ) => void;
+  updateWorkoutExercise: (date: string, workoutExerciseId: string, patch: WorkoutExercisePatch) => void;
+  deleteWorkoutExercise: (date: string, workoutExerciseId: string) => void;
   closedDays: string[];
   isDayClosed: (date: string) => boolean;
   closeDay: (date: string) => void;
@@ -242,6 +302,98 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setData((d) => ({ ...d, closedDays: d.closedDays.filter((x) => x !== date), updatedAt: Date.now() }));
   }, []);
 
+  // ── gym ──────────────────────────────────────────────────
+  const addExercise = useCallback((input: ExerciseInput): Exercise => {
+    const ex: Exercise = { id: uid(), name: input.name.trim(), category: input.category, kind: input.kind, createdAt: Date.now() };
+    setData((d) => ({ ...d, exercises: [...d.exercises, ex], updatedAt: Date.now() }));
+    return ex;
+  }, []);
+
+  const updateExercise = useCallback((id: string, patch: ExerciseInput) => {
+    setData((d) => ({
+      ...d,
+      exercises: d.exercises.map((e) =>
+        e.id === id ? { ...e, name: patch.name.trim(), category: patch.category, kind: patch.kind } : e,
+      ),
+      updatedAt: Date.now(),
+    }));
+  }, []);
+
+  // Deleting a library exercise leaves past workouts intact (they snapshot the
+  // name/category), exactly like deleting a food doesn't touch logged entries.
+  const deleteExercise = useCallback((id: string) => {
+    setData((d) => ({ ...d, exercises: d.exercises.filter((e) => e.id !== id), updatedAt: Date.now() }));
+  }, []);
+
+  // Add an exercise to the day, pre-filling the weight/intensity from the last
+  // time it was logged (progressive-overload nicety).
+  const addExerciseToWorkout = useCallback(
+    (date: string, exercise: { id?: string; name: string; category: ExerciseCategory; kind: ExerciseKind }) => {
+      setData((d) => {
+        const prev = lastLogForExercise(d.workouts, { exerciseId: exercise.id, name: exercise.name }, date);
+        let we: WorkoutExercise;
+        if (exercise.kind === "cardio") {
+          const p = prev && prev.kind === "cardio" ? prev : undefined;
+          we = {
+            id: uid(),
+            exerciseId: exercise.id,
+            name: exercise.name,
+            category: exercise.category,
+            kind: "cardio",
+            intensity: p?.intensity ?? "medium",
+            minutes: p?.minutes,
+          };
+        } else {
+          const p = prev && prev.kind === "strength" ? prev : undefined;
+          we = {
+            id: uid(),
+            exerciseId: exercise.id,
+            name: exercise.name,
+            category: exercise.category,
+            kind: "strength",
+            weight: p?.weight,
+            sets: p?.sets ?? 3,
+            reps: 8,
+          };
+        }
+        const idx = d.workouts.findIndex((w) => w.date === date);
+        const workouts =
+          idx === -1
+            ? [...d.workouts, { id: uid(), date, exercises: [we], createdAt: Date.now() }]
+            : d.workouts.map((w, i) => (i === idx ? { ...w, exercises: [...w.exercises, we] } : w));
+        return { ...d, workouts, updatedAt: Date.now() };
+      });
+    },
+    [],
+  );
+
+  const updateWorkoutExercise = useCallback((date: string, workoutExerciseId: string, patch: WorkoutExercisePatch) => {
+    setData((d) => ({
+      ...d,
+      workouts: d.workouts.map((w) =>
+        w.date !== date
+          ? w
+          : {
+              ...w,
+              exercises: w.exercises.map((e) => (e.id === workoutExerciseId ? applyWorkoutPatch(e, patch) : e)),
+            },
+      ),
+      updatedAt: Date.now(),
+    }));
+  }, []);
+
+  // Removing the last exercise also drops the (now empty) workout, so an empty
+  // session never lingers as a phantom gym day.
+  const deleteWorkoutExercise = useCallback((date: string, workoutExerciseId: string) => {
+    setData((d) => ({
+      ...d,
+      workouts: d.workouts
+        .map((w) => (w.date !== date ? w : { ...w, exercises: w.exercises.filter((e) => e.id !== workoutExerciseId) }))
+        .filter((w) => w.exercises.length > 0),
+      updatedAt: Date.now(),
+    }));
+  }, []);
+
   const replaceAll = useCallback((next: AppData) => setData({ ...next, updatedAt: Date.now() }), []);
   const clearAll = useCallback(() => setData({ ...emptyData(), updatedAt: Date.now() }), []);
   const exportJSON = () => JSON.stringify(data, null, 2);
@@ -296,6 +448,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     addEntry,
     deleteEntry,
     updateSettings,
+    exercises: data.exercises,
+    workouts: data.workouts,
+    addExercise,
+    updateExercise,
+    deleteExercise,
+    addExerciseToWorkout,
+    updateWorkoutExercise,
+    deleteWorkoutExercise,
     closedDays: data.closedDays,
     isDayClosed,
     closeDay,

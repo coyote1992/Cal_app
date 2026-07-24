@@ -2,13 +2,31 @@
 // backend (e.g. Vercel KV) can replace localStorage later without touching the
 // UI or the store. Also handles migration of older saved data.
 
-import type { AppData, CalorieBasis, Entry, Food, Settings } from "./types";
+import type {
+  AppData,
+  CalorieBasis,
+  CardioIntensity,
+  Entry,
+  Exercise,
+  ExerciseCategory,
+  ExerciseKind,
+  Food,
+  Settings,
+  Workout,
+  WorkoutExercise,
+} from "./types";
 import { computeCalories, uid } from "./util";
 
 const STORAGE_KEY = "calorie-tracker:v1";
-export const DATA_VERSION = 5;
+export const DATA_VERSION = 6;
 
-export const DEFAULT_SETTINGS: Settings = { dailyBudget: 2000, proteinGoal: 160, weekStartsOn: 1 };
+export const DEFAULT_SETTINGS: Settings = {
+  dailyBudget: 2000,
+  proteinGoal: 160,
+  weekStartsOn: 1,
+  weightUnit: "kg",
+  categoryGoals: { push: 9, pull: 9, lower: 9, other: 3 },
+};
 
 type PresetFood = { name: string; category: string; basis: CalorieBasis; calories: number; protein: number; unit?: string };
 
@@ -95,15 +113,27 @@ function presetToFood(p: PresetFood, i: number): Food {
 }
 
 export function emptyData(): AppData {
-  return { version: DATA_VERSION, foods: [], entries: [], settings: { ...DEFAULT_SETTINGS }, closedDays: [], updatedAt: 0 };
+  return {
+    version: DATA_VERSION,
+    foods: [],
+    entries: [],
+    exercises: [],
+    workouts: [],
+    settings: { ...DEFAULT_SETTINGS },
+    closedDays: [],
+    updatedAt: 0,
+  };
 }
 
-/** The user's food list, seeded on the very first run (all editable/deletable). */
+/** The user's food list, seeded on the very first run (all editable). The gym
+ *  exercise library starts empty — the user builds it as they go. */
 export function seededData(): AppData {
   return {
     version: DATA_VERSION,
     foods: PRESET_FOODS.map(presetToFood),
     entries: [],
+    exercises: [],
+    workouts: [],
     settings: { ...DEFAULT_SETTINGS },
     closedDays: [],
     updatedAt: Date.now(),
@@ -153,6 +183,82 @@ function normalizeEntry(e: any): Entry {
   };
 }
 
+// Legacy muscle groups (pre-category model) → the four movement patterns.
+const MUSCLE_TO_CATEGORY: Record<string, ExerciseCategory> = {
+  chest: "push",
+  shoulders: "push",
+  back: "pull",
+  arms: "pull",
+  legs: "lower",
+  core: "other",
+};
+function coerceCategory(v: unknown, legacyMuscle?: unknown): ExerciseCategory {
+  if (v === "push" || v === "pull" || v === "lower" || v === "other") return v;
+  const m = typeof legacyMuscle === "string" ? MUSCLE_TO_CATEGORY[legacyMuscle.toLowerCase()] : undefined;
+  return m ?? "other";
+}
+function coerceKind(v: unknown): ExerciseKind {
+  return v === "cardio" ? "cardio" : "strength";
+}
+function coerceIntensity(v: unknown): CardioIntensity {
+  return v === "low" || v === "high" ? v : "medium";
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizeExercise(e: any): Exercise {
+  return {
+    id: (e?.id as string) ?? uid(),
+    name: String(e?.name ?? "Exercise"),
+    category: coerceCategory(e?.category, e?.muscle),
+    kind: coerceKind(e?.kind),
+    createdAt: (e?.createdAt as number) ?? Date.now(),
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizeWorkoutExercise(we: any): WorkoutExercise {
+  const base = {
+    id: (we?.id as string) ?? uid(),
+    exerciseId: (we?.exerciseId as string) || undefined,
+    name: String(we?.name ?? "Exercise"),
+    category: coerceCategory(we?.category, we?.muscle),
+  };
+  if (we?.kind === "cardio") {
+    const minutes = Number(we?.minutes);
+    return {
+      ...base,
+      kind: "cardio",
+      intensity: coerceIntensity(we?.intensity),
+      minutes: Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes) : undefined,
+    };
+  }
+  // Strength (default). Tolerate the legacy shape where `sets` was an array.
+  let weight = Number(we?.weight);
+  let sets = Number(we?.sets);
+  if (!Number.isFinite(weight) && Array.isArray(we?.sets)) {
+    weight = Number(we.sets[0]?.weight);
+    sets = we.sets.length;
+  }
+  return {
+    ...base,
+    kind: "strength",
+    weight: Number.isFinite(weight) && weight > 0 ? weight : undefined,
+    sets: sets === 2 ? 2 : 3,
+    reps: 8,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizeWorkout(w: any): Workout {
+  return {
+    id: (w?.id as string) ?? uid(),
+    date: String(w?.date ?? ""),
+    exercises: Array.isArray(w?.exercises) ? w.exercises.map(normalizeWorkoutExercise) : [],
+    note: (w?.note as string) || undefined,
+    createdAt: (w?.createdAt as number) ?? Date.now(),
+  };
+}
+
 /** Add any preset foods not already saved (matched case-insensitively by name). */
 function mergePresets(foods: Food[]): Food[] {
   const have = new Set(foods.map((f) => f.name.trim().toLowerCase()));
@@ -185,13 +291,21 @@ export function normalize(raw: unknown): AppData {
     );
   }
 
+  const exercises = Array.isArray(d.exercises) ? d.exercises.map((e) => normalizeExercise(e)) : base.exercises;
+
   const closedDays = Array.isArray(d.closedDays) ? d.closedDays.filter((x): x is string => typeof x === "string") : [];
 
   return {
     version: DATA_VERSION,
     foods,
     entries: Array.isArray(d.entries) ? d.entries.map((e) => normalizeEntry(e)) : base.entries,
-    settings: { ...base.settings, ...(d.settings ?? {}) },
+    exercises,
+    workouts: Array.isArray(d.workouts) ? d.workouts.map((w) => normalizeWorkout(w)) : base.workouts,
+    settings: {
+      ...base.settings,
+      ...(d.settings ?? {}),
+      categoryGoals: { ...base.settings.categoryGoals, ...(d.settings?.categoryGoals ?? {}) },
+    },
     closedDays,
     updatedAt: Number(d.updatedAt) || Date.now(),
   };

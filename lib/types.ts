@@ -52,6 +52,8 @@ export interface Entry {
   createdAt: number;
 }
 
+export type WeightUnit = "kg" | "lb";
+
 export interface Settings {
   /** Daily calorie budget/target. */
   dailyBudget: number;
@@ -59,12 +61,76 @@ export interface Settings {
   proteinGoal: number;
   /** 0 = week starts Sunday, 1 = week starts Monday. */
   weekStartsOn: 0 | 1;
+  /** Unit weights are entered/shown in for the gym log. */
+  weightUnit: WeightUnit;
+  /** Target sets per week for each movement pattern. */
+  categoryGoals: Record<ExerciseCategory, number>;
+}
+
+// ── Gym ────────────────────────────────────────────────────
+/** Movement pattern the exercise trains. */
+export type ExerciseCategory = "push" | "pull" | "lower" | "other";
+/** Strength lifts log weight+sets; cardio logs intensity+time. */
+export type ExerciseKind = "strength" | "cardio";
+export type CardioIntensity = "low" | "medium" | "high";
+
+/** A reusable exercise definition in the library (like Food, but for training). */
+export interface Exercise {
+  id: ID;
+  name: string;
+  category: ExerciseCategory;
+  kind: ExerciseKind;
+  createdAt: number;
+}
+
+interface WorkoutExerciseBase {
+  id: ID;
+  exerciseId?: ID;
+  /** Snapshots so history stays stable if the library entry changes/deletes. */
+  name: string;
+  category: ExerciseCategory;
+}
+
+/** A strength lift as performed: one working weight, a 2-or-3 set count, reps
+ *  fixed at 8. Deliberately simple — one entry per exercise per day. */
+export interface StrengthLog extends WorkoutExerciseBase {
+  kind: "strength";
+  /** Working weight in the user's unit; undefined until entered. */
+  weight?: number;
+  /** Number of sets (2 or 3). */
+  sets: number;
+  /** Reps per set — fixed at 8. */
+  reps: number;
+}
+
+/** A cardio bout: an intensity and a duration. */
+export interface CardioLog extends WorkoutExerciseBase {
+  kind: "cardio";
+  intensity: CardioIntensity;
+  /** Duration in minutes; undefined until entered. */
+  minutes?: number;
+}
+
+export type WorkoutExercise = StrengthLog | CardioLog;
+
+/** A gym session on a given day. */
+export interface Workout {
+  id: ID;
+  /** Local calendar day, YYYY-MM-DD. */
+  date: string;
+  exercises: WorkoutExercise[];
+  note?: string;
+  createdAt: number;
 }
 
 export interface AppData {
   version: number;
   foods: Food[];
   entries: Entry[];
+  /** Gym exercise library (reusable definitions). */
+  exercises: Exercise[];
+  /** Logged gym sessions. */
+  workouts: Workout[];
   settings: Settings;
   /** ISO days (YYYY-MM-DD) the user has "closed" — locked from further edits. */
   closedDays: string[];

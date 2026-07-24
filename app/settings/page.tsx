@@ -5,6 +5,8 @@ import type { ChangeEvent } from "react";
 import { useStore } from "@/app/store";
 import { parseImport } from "@/lib/storage";
 import { todayISO } from "@/lib/date";
+import { CATEGORIES, CATEGORY_LABEL } from "@/lib/gym";
+import type { ExerciseCategory } from "@/lib/types";
 
 export default function SettingsPage() {
   const {
@@ -26,6 +28,7 @@ export default function SettingsPage() {
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [budgetStr, setBudgetStr] = useState<string | null>(null);
   const [proteinStr, setProteinStr] = useState<string | null>(null);
+  const [goalStr, setGoalStr] = useState<Partial<Record<ExerciseCategory, string>>>({});
   const fileRef = useRef<HTMLInputElement>(null);
   const [codeInput, setCodeInput] = useState("");
   const [syncBusy, setSyncBusy] = useState(false);
@@ -159,6 +162,43 @@ export default function SettingsPage() {
         <button className={settings.weekStartsOn === 0 ? "active" : ""} onClick={() => updateSettings({ weekStartsOn: 0 })}>
           Sunday
         </button>
+      </div>
+
+      <h2 className="section-title">Gym weight unit</h2>
+      <div className="segmented">
+        <button className={settings.weightUnit === "kg" ? "active" : ""} onClick={() => updateSettings({ weightUnit: "kg" })}>
+          Kilograms (kg)
+        </button>
+        <button className={settings.weightUnit === "lb" ? "active" : ""} onClick={() => updateSettings({ weightUnit: "lb" })}>
+          Pounds (lb)
+        </button>
+      </div>
+
+      <h2 className="section-title">Weekly set goals</h2>
+      <div className="card">
+        <div className="hint" style={{ marginTop: 0, marginBottom: 12 }}>
+          Target sets per week per movement pattern — shown as progress bars in the monthly Stats view.
+        </div>
+        <div className="goal-grid">
+          {CATEGORIES.map((c) => (
+            <div className="field" key={c} style={{ marginBottom: 0 }}>
+              <label htmlFor={`goal-${c}`}>{CATEGORY_LABEL[c]}</label>
+              <input
+                id={`goal-${c}`}
+                className="input"
+                type="number"
+                inputMode="numeric"
+                value={goalStr[c] ?? String(settings.categoryGoals[c])}
+                onChange={(e) => {
+                  setGoalStr((s) => ({ ...s, [c]: e.target.value }));
+                  const n = Math.max(0, Math.round(Number(e.target.value) || 0));
+                  updateSettings({ categoryGoals: { ...settings.categoryGoals, [c]: n } });
+                }}
+                onBlur={() => setGoalStr((s) => ({ ...s, [c]: undefined }))}
+              />
+            </div>
+          ))}
+        </div>
       </div>
 
       <h2 className="section-title">Your data</h2>

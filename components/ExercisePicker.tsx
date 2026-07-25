@@ -1,13 +1,13 @@
 "use client";
 
-// Pick an exercise to add to the current workout: browse it in four columns
-// (push / pull / lower / other), search, or create a new one — strength or
-// cardio. Cardio exercises are flagged with a pulse mark.
+// Pick an exercise to add to the current workout: browse it grouped by
+// category (push / pull / lower / arms & delt / cardio), search, or create a
+// new one — strength or cardio. Cardio exercises are flagged with a pulse mark.
 
 import { useEffect, useMemo, useState } from "react";
 import type { Exercise, ExerciseCategory, ExerciseKind } from "@/lib/types";
 import { useStore } from "@/app/store";
-import { CATEGORIES, CATEGORY_LABEL, exercisesByCategory } from "@/lib/gym";
+import { CATEGORY_LABEL, STRENGTH_CATEGORIES, exercisesByCategory } from "@/lib/gym";
 import { IconPulse, IconTrash } from "./icons";
 
 type PickedExercise = { id?: string; name: string; category: ExerciseCategory; kind: ExerciseKind };
@@ -113,28 +113,43 @@ export default function ExercisePicker({
             <div className="field">
               <label>Type</label>
               <div className="segmented">
-                <button className={newKind === "strength" ? "active" : ""} onClick={() => setNewKind("strength")}>
+                <button
+                  className={newKind === "strength" ? "active" : ""}
+                  onClick={() => {
+                    setNewKind("strength");
+                    setNewCategory("push");
+                  }}
+                >
                   Strength
                 </button>
-                <button className={newKind === "cardio" ? "active" : ""} onClick={() => setNewKind("cardio")}>
+                <button
+                  className={newKind === "cardio" ? "active" : ""}
+                  onClick={() => {
+                    setNewKind("cardio");
+                    // Cardio always lives in the cardio category.
+                    setNewCategory("cardio");
+                  }}
+                >
                   Cardio
                 </button>
               </div>
             </div>
-            <div className="field">
-              <label>Category</label>
-              <div className="cat-picker">
-                {CATEGORIES.map((c) => (
-                  <button
-                    key={c}
-                    className={"cat-opt" + (newCategory === c ? " active" : "")}
-                    onClick={() => setNewCategory(c)}
-                  >
-                    {CATEGORY_LABEL[c]}
-                  </button>
-                ))}
+            {newKind === "strength" && (
+              <div className="field">
+                <label>Category</label>
+                <div className="cat-picker">
+                  {STRENGTH_CATEGORIES.map((c) => (
+                    <button
+                      key={c}
+                      className={"cat-opt" + (newCategory === c ? " active" : "")}
+                      onClick={() => setNewCategory(c)}
+                    >
+                      {CATEGORY_LABEL[c]}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
             <div className="ae-row">
               <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setCreating(false)}>
                 Back

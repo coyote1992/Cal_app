@@ -96,7 +96,9 @@ input[type="number"] {
   position: relative;
 }
 .app-main {
-  padding: 18px 16px calc(100px + env(safe-area-inset-bottom));
+  /* statusBarStyle is black-translucent + viewportFit:cover, so the page draws
+     behind the notch/status bar — inset the top so the first row clears it. */
+  padding: calc(18px + env(safe-area-inset-top)) 16px calc(100px + env(safe-area-inset-bottom));
 }
 .loading {
   padding: 48px;
@@ -1243,6 +1245,13 @@ input[type="number"] {
 .cat-tally-num.hit {
   color: var(--accent-ink);
 }
+.cat-tally-unit {
+  font-family: var(--font-body), sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-left: 1px;
+}
 .cat-tally-lbl {
   font-size: 10px;
   font-weight: 700;
@@ -1394,7 +1403,7 @@ input[type="number"] {
 }
 @media (min-width: 560px) {
   .ex-cats {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
   }
 }
 .ex-cat-head {
@@ -1756,9 +1765,19 @@ input[type="number"] {
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
 }
-.cal-gym-ic {
+/* Weight + cardio marks stack vertically in the cell's top-right corner. */
+.cal-marks {
   position: absolute;
   top: 3px;
   right: 3px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+.cal-gym-ic {
   color: var(--accent-ink);
+}
+.cal-cardio-ic {
+  color: var(--warn);
 }

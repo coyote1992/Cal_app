@@ -18,14 +18,14 @@ import type {
 import { computeCalories, uid } from "./util";
 
 const STORAGE_KEY = "calorie-tracker:v1";
-export const DATA_VERSION = 6;
+export const DATA_VERSION = 7;
 
 export const DEFAULT_SETTINGS: Settings = {
   dailyBudget: 2000,
   proteinGoal: 160,
   weekStartsOn: 1,
   weightUnit: "kg",
-  categoryGoals: { push: 9, pull: 9, lower: 9, other: 3 },
+  categoryGoals: { push: 9, pull: 9, lower: 9, arms: 6, cardio: 3 },
 };
 
 type PresetFood = { name: string; category: string; basis: CalorieBasis; calories: number; protein: number; unit?: string };
@@ -183,19 +183,22 @@ function normalizeEntry(e: any): Entry {
   };
 }
 
-// Legacy muscle groups (pre-category model) → the four movement patterns.
+// Legacy muscle groups (pre-category model) → the movement patterns.
 const MUSCLE_TO_CATEGORY: Record<string, ExerciseCategory> = {
   chest: "push",
   shoulders: "push",
   back: "pull",
   arms: "pull",
   legs: "lower",
-  core: "other",
+  core: "cardio",
 };
+/** v7 renamed the catch-all "other" category to "cardio". "arms" is a later
+ *  addition but needs no version gate — it's just one more valid literal. */
 function coerceCategory(v: unknown, legacyMuscle?: unknown): ExerciseCategory {
-  if (v === "push" || v === "pull" || v === "lower" || v === "other") return v;
+  if (v === "push" || v === "pull" || v === "lower" || v === "arms" || v === "cardio") return v;
+  if (v === "other") return "cardio";
   const m = typeof legacyMuscle === "string" ? MUSCLE_TO_CATEGORY[legacyMuscle.toLowerCase()] : undefined;
-  return m ?? "other";
+  return m ?? "cardio";
 }
 function coerceKind(v: unknown): ExerciseKind {
   return v === "cardio" ? "cardio" : "strength";
@@ -203,33 +206,64 @@ function coerceKind(v: unknown): ExerciseKind {
 function coerceIntensity(v: unknown): CardioIntensity {
   return v === "low" || v === "high" ? v : "medium";
 }
+/** Cardio always lives in the cardio category, whatever was saved before. */
+function categoryFor(kind: ExerciseKind, v: unknown, legacyMuscle?: unknown): ExerciseCategory {
+  return kind === "cardio" ? "cardio" : coerceCategory(v, legacyMuscle);
+}
+/** Keep only the live categories, carrying a customised pre-v7 "other" goal
+ *  onto its replacement, "cardio"; any settings saved before "arms" existed
+ *  fall back to its default. */
+function normalizeCategoryGoals(
+  defaults: Record<ExerciseCategory, number>,
+  saved: unknown,
+): Record<ExerciseCategory, number> {
+  const s = (saved ?? {}) as Record<string, unknown>;
+  const num = (v: unknown) => (Number.isFinite(Number(v)) ? Math.max(0, Math.round(Number(v))) : undefined);
+  return {
+    push: num(s.push) ?? defaults.push,
+    pull: num(s.pull) ?? defaults.pull,
+    lower: num(s.lower) ?? defaults.lower,
+    arms: num(s.arms) ?? defaults.arms,
+    cardio: num(s.cardio) ?? num(s.other) ?? defaults.cardio,
+  };
+}
+
+/** v7 stores cardio duration in hours; older data used whole minutes. */
+function coerceHours(raw: unknown, legacyMinutes: unknown): number | undefined {
+  const h = Number(raw);
+  if (Number.isFinite(h) && h > 0) return Math.round(h * 100) / 100;
+  const m = Number(legacyMinutes);
+  if (Number.isFinite(m) && m > 0) return Math.round((m / 60) * 100) / 100;
+  return undefined;
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function normalizeExercise(e: any): Exercise {
+  const kind = coerceKind(e?.kind);
   return {
     id: (e?.id as string) ?? uid(),
     name: String(e?.name ?? "Exercise"),
-    category: coerceCategory(e?.category, e?.muscle),
-    kind: coerceKind(e?.kind),
+    category: categoryFor(kind, e?.category, e?.muscle),
+    kind,
     createdAt: (e?.createdAt as number) ?? Date.now(),
   };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function normalizeWorkoutExercise(we: any): WorkoutExercise {
+  const kind = coerceKind(we?.kind);
   const base = {
     id: (we?.id as string) ?? uid(),
     exerciseId: (we?.exerciseId as string) || undefined,
     name: String(we?.name ?? "Exercise"),
-    category: coerceCategory(we?.category, we?.muscle),
+    category: categoryFor(kind, we?.category, we?.muscle),
   };
-  if (we?.kind === "cardio") {
-    const minutes = Number(we?.minutes);
+  if (kind === "cardio") {
     return {
       ...base,
       kind: "cardio",
       intensity: coerceIntensity(we?.intensity),
-      minutes: Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes) : undefined,
+      hours: coerceHours(we?.hours, we?.minutes),
     };
   }
   // Strength (default). Tolerate the legacy shape where `sets` was an array.
@@ -304,7 +338,7 @@ export function normalize(raw: unknown): AppData {
     settings: {
       ...base.settings,
       ...(d.settings ?? {}),
-      categoryGoals: { ...base.settings.categoryGoals, ...(d.settings?.categoryGoals ?? {}) },
+      categoryGoals: normalizeCategoryGoals(base.settings.categoryGoals, d.settings?.categoryGoals),
     },
     closedDays,
     updatedAt: Number(d.updatedAt) || Date.now(),

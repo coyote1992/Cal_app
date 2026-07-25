@@ -68,8 +68,8 @@ export interface Settings {
 }
 
 // ── Gym ────────────────────────────────────────────────────
-/** Movement pattern the exercise trains. */
-export type ExerciseCategory = "push" | "pull" | "lower" | "other";
+/** Movement pattern the exercise trains; cardio is its own bucket. */
+export type ExerciseCategory = "push" | "pull" | "lower" | "arms" | "cardio";
 /** Strength lifts log weight+sets; cardio logs intensity+time. */
 export type ExerciseKind = "strength" | "cardio";
 export type CardioIntensity = "low" | "medium" | "high";
@@ -107,8 +107,8 @@ export interface StrengthLog extends WorkoutExerciseBase {
 export interface CardioLog extends WorkoutExerciseBase {
   kind: "cardio";
   intensity: CardioIntensity;
-  /** Duration in minutes; undefined until entered. */
-  minutes?: number;
+  /** Duration in HOURS (e.g. 0.5 for 30 min); undefined until entered. */
+  hours?: number;
 }
 
 export type WorkoutExercise = StrengthLog | CardioLog;

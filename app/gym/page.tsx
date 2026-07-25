@@ -6,7 +6,14 @@ import type { CardioIntensity, StrengthLog, CardioLog, WorkoutExercise } from "@
 import ExercisePicker from "@/components/ExercisePicker";
 import { IconLock, IconPlus, IconPulse, IconTrash } from "@/components/icons";
 import { addDays, dayLabel, todayISO } from "@/lib/date";
-import { CATEGORIES, CATEGORY_LABEL, INTENSITY_LABEL, cardioMinutes, categorySets, workoutForDate } from "@/lib/gym";
+import {
+  CATEGORY_LABEL,
+  INTENSITY_LABEL,
+  STRENGTH_CATEGORIES,
+  cardioHours,
+  categorySets,
+  workoutForDate,
+} from "@/lib/gym";
 
 const INTENSITIES: CardioIntensity[] = ["low", "medium", "high"];
 
@@ -24,7 +31,7 @@ export default function GymPage() {
   const isToday = date === todayISO();
   const closed = isDayClosed(date);
   const cats = categorySets(exercises);
-  const cardioMin = cardioMinutes(exercises);
+  const cardioH = cardioHours(exercises);
 
   return (
     <div>
@@ -48,16 +55,21 @@ export default function GymPage() {
       {exercises.length > 0 && (
         <section className="card">
           <div className="cat-tally">
-            {CATEGORIES.map((c) => (
+            {STRENGTH_CATEGORIES.map((c) => (
               <div className="cat-tally-item" key={c}>
                 <span className={"cat-tally-num" + (cats[c] >= 3 ? " hit" : "")}>{cats[c]}</span>
                 <span className="cat-tally-lbl">{CATEGORY_LABEL[c]}</span>
               </div>
             ))}
+            <div className="cat-tally-item">
+              <span className={"cat-tally-num" + (cardioH > 0 ? " hit" : "")}>
+                {Math.round(cardioH * 100) / 100}
+                <span className="cat-tally-unit">h</span>
+              </span>
+              <span className="cat-tally-lbl">Cardio</span>
+            </div>
           </div>
-          <div className="cat-tally-sub">
-            sets per pattern today{cardioMin > 0 ? ` · ${cardioMin} min cardio` : ""}
-          </div>
+          <div className="cat-tally-sub">sets per pattern · cardio hours</div>
         </section>
       )}
 
@@ -117,7 +129,7 @@ function ExerciseCard({
   we: WorkoutExercise;
   unit: string;
   locked: boolean;
-  onPatch: (patch: { weight?: number; sets?: number; intensity?: CardioIntensity; minutes?: number }) => void;
+  onPatch: (patch: { weight?: number; sets?: number; intensity?: CardioIntensity; hours?: number }) => void;
   onRemove: () => void;
 }) {
   return (
@@ -197,9 +209,9 @@ function CardioBody({
 }: {
   we: CardioLog;
   locked: boolean;
-  onPatch: (patch: { intensity?: CardioIntensity; minutes?: number }) => void;
+  onPatch: (patch: { intensity?: CardioIntensity; hours?: number }) => void;
 }) {
-  const [minStr, setMinStr] = useState(we.minutes != null ? String(we.minutes) : "");
+  const [hoursStr, setHoursStr] = useState(we.hours != null ? String(we.hours) : "");
 
   return (
     <div className="log-row">
@@ -213,19 +225,22 @@ function CardioBody({
       <div className="set-field log-minutes">
         <input
           type="number"
-          inputMode="numeric"
+          inputMode="decimal"
+          step={0.25}
           min={0}
           placeholder="0"
           readOnly={locked}
-          value={minStr}
+          value={hoursStr}
           onChange={(e) => {
-            setMinStr(e.target.value);
-            const m = Number(e.target.value);
-            onPatch({ minutes: Number.isFinite(m) && m > 0 ? m : undefined });
+            // Accept a comma decimal separator (0,3) as well as a dot.
+            const raw = e.target.value.replace(",", ".");
+            setHoursStr(e.target.value);
+            const h = Number(raw);
+            onPatch({ hours: Number.isFinite(h) && h > 0 ? h : undefined });
           }}
-          aria-label="Minutes"
+          aria-label="Hours"
         />
-        <span className="set-unit">min</span>
+        <span className="set-unit">h</span>
       </div>
     </div>
   );

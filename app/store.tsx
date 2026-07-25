@@ -58,7 +58,8 @@ export interface WorkoutExercisePatch {
   weight?: number;
   sets?: number;
   intensity?: CardioIntensity;
-  minutes?: number;
+  /** Cardio duration in hours. */
+  hours?: number;
 }
 
 function applyWorkoutPatch(e: WorkoutExercise, patch: WorkoutExercisePatch): WorkoutExercise {
@@ -73,12 +74,12 @@ function applyWorkoutPatch(e: WorkoutExercise, patch: WorkoutExercisePatch): Wor
   return {
     ...e,
     intensity: patch.intensity ?? e.intensity,
-    minutes:
-      patch.minutes !== undefined
-        ? Number.isFinite(patch.minutes) && patch.minutes! > 0
-          ? Math.round(patch.minutes!)
+    hours:
+      patch.hours !== undefined
+        ? Number.isFinite(patch.hours) && patch.hours! > 0
+          ? Math.round(patch.hours! * 100) / 100
           : undefined
-        : e.minutes,
+        : e.hours,
   };
 }
 
@@ -304,7 +305,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // ── gym ──────────────────────────────────────────────────
   const addExercise = useCallback((input: ExerciseInput): Exercise => {
-    const ex: Exercise = { id: uid(), name: input.name.trim(), category: input.category, kind: input.kind, createdAt: Date.now() };
+    // Cardio always lives in the cardio category, whatever was picked.
+    const category = input.kind === "cardio" ? "cardio" : input.category;
+    const ex: Exercise = { id: uid(), name: input.name.trim(), category, kind: input.kind, createdAt: Date.now() };
     setData((d) => ({ ...d, exercises: [...d.exercises, ex], updatedAt: Date.now() }));
     return ex;
   }, []);
@@ -313,7 +316,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setData((d) => ({
       ...d,
       exercises: d.exercises.map((e) =>
-        e.id === id ? { ...e, name: patch.name.trim(), category: patch.category, kind: patch.kind } : e,
+        e.id === id
+          ? { ...e, name: patch.name.trim(), category: patch.kind === "cardio" ? "cardio" : patch.category, kind: patch.kind }
+          : e,
       ),
       updatedAt: Date.now(),
     }));
@@ -338,10 +343,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             id: uid(),
             exerciseId: exercise.id,
             name: exercise.name,
-            category: exercise.category,
+            // Cardio always lives in the cardio category.
+            category: "cardio",
             kind: "cardio",
             intensity: p?.intensity ?? "medium",
-            minutes: p?.minutes,
+            hours: p?.hours,
           };
         } else {
           const p = prev && prev.kind === "strength" ? prev : undefined;

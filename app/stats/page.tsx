@@ -22,14 +22,17 @@ import { closedSummary, proteinByDate, totalsByDate } from "@/lib/calc";
 import {
   CATEGORIES,
   CATEGORY_LABEL,
-  cardioMinutesOnDays,
+  STRENGTH_CATEGORIES,
+  cardioDaySet,
+  cardioHoursOnDays,
   categorySetsOnDays,
   distinctWeeks,
-  gymDaySet,
+  formatHours,
   gymSummary,
+  strengthDaySet,
 } from "@/lib/gym";
 import type { ExerciseCategory } from "@/lib/types";
-import { IconDumbbell } from "@/components/icons";
+import { IconDumbbell, IconPulse } from "@/components/icons";
 import { formatKcal } from "@/lib/util";
 
 type View = "week" | "month";
@@ -129,23 +132,30 @@ function GymStats({
           {g.gymDays}
           <span className="gym-days-den">/{denom}</span>
         </span>
-        <span className="gym-days-lbl">gym days{c.sessions > 0 ? ` · ${c.sessions} cardio · ${c.minutes} min` : ""}</span>
+        <span className="gym-days-lbl">
+          gym days{c.sessions > 0 ? ` · ${c.sessions} cardio · ${formatHours(c.hours)}` : ""}
+        </span>
       </div>
 
       <div className="card goal-card">
-        <div className="goal-title">Sets this week</div>
+        <div className="goal-title">This week vs. goal</div>
         {CATEGORIES.map((cat) => {
-          const sets = g.categorySets[cat];
+          // Strength patterns are counted in sets; cardio in hours.
+          const isCardio = cat === "cardio";
+          const val = isCardio ? c.hours : g.categorySets[cat];
           const goal = categoryGoals[cat] || 0;
-          const pct = goal > 0 ? Math.min((sets / goal) * 100, 100) : 0;
-          const met = goal > 0 && sets >= goal;
+          const pct = goal > 0 ? Math.min((val / goal) * 100, 100) : 0;
+          const met = goal > 0 && val >= goal;
           return (
             <div className="goal-row" key={cat}>
               <div className="goal-row-head">
                 <span>{CATEGORY_LABEL[cat]}</span>
                 <span className="goal-row-val">
-                  {sets}
-                  <span className="goal-row-goal"> / {goal}</span>
+                  {isCardio ? Math.round(val * 100) / 100 : val}
+                  <span className="goal-row-goal">
+                    {" "}
+                    / {goal} {isCardio ? "h" : "sets"}
+                  </span>
                 </span>
               </div>
               <div className="goal-bar">
@@ -157,7 +167,7 @@ function GymStats({
       </div>
 
       <div className="cat-breakdown">
-        {CATEGORIES.map((cat) => (
+        {STRENGTH_CATEGORIES.map((cat) => (
           <div className="cbd" key={cat}>
             <div className="cbd-head">
               <span>{CATEGORY_LABEL[cat]}</span>
@@ -175,18 +185,34 @@ function GymStats({
             )}
           </div>
         ))}
+        <div className="cbd">
+          <div className="cbd-head">
+            <span>Cardio</span>
+            <span className="cbd-sets">{formatHours(c.hours)}</span>
+          </div>
+          {c.byExercise.length > 0 ? (
+            c.byExercise.map((e) => (
+              <div className="cbd-ex" key={e.name}>
+                <span className="cbd-ex-name">{e.name}</span>
+                <span className="cbd-ex-sets">{Math.round(e.hours * 100) / 100}</span>
+              </div>
+            ))
+          ) : (
+            <div className="cbd-empty">no cardio</div>
+          )}
+        </div>
       </div>
 
       {c.sessions > 0 && (
         <div className="card cardio-card">
           <div className="cbd-head">
-            <span>Cardio</span>
-            <span className="cbd-sets">{c.minutes} min</span>
+            <span>Cardio intensity</span>
+            <span className="cbd-sets">{formatHours(c.hours)}</span>
           </div>
           <div className="cardio-split">
-            <span>Low {c.byIntensity.low}′</span>
-            <span>Med {c.byIntensity.medium}′</span>
-            <span>High {c.byIntensity.high}′</span>
+            <span>Low {Math.round(c.byIntensity.low * 100) / 100} h</span>
+            <span>Med {Math.round(c.byIntensity.medium * 100) / 100} h</span>
+            <span>High {Math.round(c.byIntensity.high * 100) / 100} h</span>
           </div>
         </div>
       )}
@@ -313,7 +339,8 @@ function MonthView({ entries, workouts, closedDays, budget, proteinGoal, categor
   const days = monthDays(anchor);
   const byDate = totalsByDate(entries);
   const proteinBy = proteinByDate(entries);
-  const gymDays = gymDaySet(workouts);
+  const strengthDays = strengthDaySet(workouts);
+  const cardioDays = cardioDaySet(workouts);
   const blanks = monthLeadingBlanks(anchor, weekStartsOn);
   const headers = dowHeaders(weekStartsOn);
 
@@ -322,7 +349,7 @@ function MonthView({ entries, workouts, closedDays, budget, proteinGoal, categor
   const cs = closedSummary(entries, closedInMonth, budget);
   const closedWeeks = distinctWeeks(closedInMonth, weekStartsOn);
   const catSets = categorySetsOnDays(workouts, closedInMonth);
-  const cardioMin = cardioMinutesOnDays(workouts, closedInMonth);
+  const cardioH = cardioHoursOnDays(workouts, closedInMonth);
 
   const a = fromISO(anchor);
   const n = fromISO(today);
@@ -384,9 +411,12 @@ function MonthView({ entries, workouts, closedDays, budget, proteinGoal, categor
         </div>
 
         <div className="month-col-right card">
-          <div className="goal-title">Avg sets / closed week</div>
+          <div className="goal-title">Avg / closed week</div>
           {CATEGORIES.map((cat) => {
-            const avg = closedWeeks > 0 ? catSets[cat] / closedWeeks : 0;
+            // Strength patterns average sets per week; cardio averages hours.
+            const isCardio = cat === "cardio";
+            const total = isCardio ? cardioH : catSets[cat];
+            const avg = closedWeeks > 0 ? total / closedWeeks : 0;
             const goal = categoryGoals[cat] || 0;
             const pct = goal > 0 ? Math.min((avg / goal) * 100, 100) : 0;
             const met = goal > 0 && avg >= goal;
@@ -396,7 +426,10 @@ function MonthView({ entries, workouts, closedDays, budget, proteinGoal, categor
                   <span>{CATEGORY_LABEL[cat]}</span>
                   <span className="goal-row-val">
                     {fmtAvg(avg)}
-                    <span className="goal-row-goal"> / {goal}</span>
+                    <span className="goal-row-goal">
+                      {" "}
+                      / {goal} {isCardio ? "h" : "sets"}
+                    </span>
                   </span>
                 </div>
                 <div className="goal-bar">
@@ -405,7 +438,6 @@ function MonthView({ entries, workouts, closedDays, budget, proteinGoal, categor
               </div>
             );
           })}
-          {cardioMin > 0 && <div className="goal-cardio">Cardio · {cardioMin} min</div>}
         </div>
       </div>
 
@@ -425,7 +457,10 @@ function MonthView({ entries, workouts, closedDays, budget, proteinGoal, categor
             return (
               <div key={d} className={"cal-cell month" + (d === today ? " today" : "")} style={cellStyle(k, p)}>
                 <span className="cal-day">{dayNumber(d)}</span>
-                {gymDays.has(d) && <IconDumbbell className="cal-gym-ic" width={11} height={11} />}
+                <span className="cal-marks">
+                  {strengthDays.has(d) && <IconDumbbell className="cal-gym-ic" width={11} height={11} />}
+                  {cardioDays.has(d) && <IconPulse className="cal-cardio-ic" width={11} height={11} />}
+                </span>
                 {k > 0 && <span className="cal-k">{formatKcal(k)}</span>}
                 {p > 0 && <span className="cal-p">{Math.round(p)}g</span>}
               </div>

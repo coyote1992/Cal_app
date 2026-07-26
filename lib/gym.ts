@@ -102,7 +102,10 @@ export function lastLogForExercise(
 
 // ── range summary for Stats ─────────────────────────────────
 export interface GymSummary {
+  /** Days with at least one logged strength set (cardio-only days don't count). */
   gymDays: number;
+  /** Days with at least one logged cardio bout. */
+  cardioDays: number;
   categorySets: Record<ExerciseCategory, number>;
   /** Every exercise per category (ranked by sets) with its set contribution. */
   byCategory: Record<ExerciseCategory, { name: string; sets: number }[]>;
@@ -128,10 +131,12 @@ export function gymSummary(workouts: Workout[], isoDays: string[]): GymSummary {
   const perCardio = new Map<string, number>();
   const cardio = { sessions: 0, hours: 0, byIntensity: { low: 0, medium: 0, high: 0 } as Record<CardioIntensity, number> };
   let gymDays = 0;
+  let cardioDays = 0;
 
   for (const w of workouts) {
     if (!inRange.has(w.date) || !workoutHasContent(w)) continue;
-    gymDays += 1;
+    if (w.exercises.some(strengthLogged)) gymDays += 1;
+    if (w.exercises.some(cardioLogged)) cardioDays += 1;
     for (const e of w.exercises) {
       if (strengthLogged(e)) {
         categorySets[e.category] += e.sets;
@@ -151,7 +156,7 @@ export function gymSummary(workouts: Workout[], isoDays: string[]): GymSummary {
   }
   const byExercise = [...perCardio.entries()].map(([name, hours]) => ({ name, hours })).sort((a, b) => b.hours - a.hours);
 
-  return { gymDays, categorySets, byCategory, cardio: { ...cardio, byExercise } };
+  return { gymDays, cardioDays, categorySets, byCategory, cardio: { ...cardio, byExercise } };
 }
 
 /** Sets per category across a specific set of days (e.g. only closed days). */

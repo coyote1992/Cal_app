@@ -127,14 +127,21 @@ function GymStats({
   return (
     <>
       <h2 className="section-title">Gym</h2>
-      <div className="gym-days">
-        <span className="gym-days-num">
-          {g.gymDays}
-          <span className="gym-days-den">/{denom}</span>
-        </span>
-        <span className="gym-days-lbl">
-          gym days{c.sessions > 0 ? ` · ${c.sessions} cardio · ${formatHours(c.hours)}` : ""}
-        </span>
+      <div className="gym-days-row">
+        <div className="gym-days">
+          <span className="gym-days-num">
+            {g.gymDays}
+            <span className="gym-days-den">/{denom}</span>
+          </span>
+          <span className="gym-days-lbl">gym days</span>
+        </div>
+        <div className="gym-days">
+          <span className="gym-days-num">
+            {g.cardioDays}
+            <span className="gym-days-den">/{denom}</span>
+          </span>
+          <span className="gym-days-lbl">cardio days{c.hours > 0 ? ` · ${formatHours(c.hours)}` : ""}</span>
+        </div>
       </div>
 
       <div className="card goal-card">

@@ -1540,11 +1540,15 @@ input[type="number"] {
 }
 
 /* ── stats: gym breakdown ──────────────────────────────── */
+.gym-days-row {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 12px;
+}
 .gym-days {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  margin-bottom: 12px;
 }
 .gym-days-num {
   font-family: var(--font-display), serif;

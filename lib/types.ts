@@ -119,6 +119,9 @@ export interface Workout {
   /** Local calendar day, YYYY-MM-DD. */
   date: string;
   exercises: WorkoutExercise[];
+  /** Body weight logged that day, in the user's weight unit. Independent of
+   *  whether any exercises were logged — a pure weigh-in day is valid. */
+  bodyWeight?: number;
   note?: string;
   createdAt: number;
 }

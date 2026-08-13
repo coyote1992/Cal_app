@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useStore } from "../store";
-import type { CardioIntensity, StrengthLog, CardioLog, WorkoutExercise } from "@/lib/types";
+import type { CardioIntensity, StrengthLog, CardioLog, Workout, WorkoutExercise } from "@/lib/types";
 import ExercisePicker from "@/components/ExercisePicker";
 import { IconLock, IconPlus, IconPulse, IconTrash } from "@/components/icons";
 import { addDays, dayLabel, todayISO } from "@/lib/date";
@@ -12,14 +12,23 @@ import {
   STRENGTH_CATEGORIES,
   cardioHours,
   categorySets,
+  lastBodyWeight,
   workoutForDate,
 } from "@/lib/gym";
 
 const INTENSITIES: CardioIntensity[] = ["low", "medium", "high"];
 
 export default function GymPage() {
-  const { hydrated, workouts, settings, isDayClosed, addExerciseToWorkout, updateWorkoutExercise, deleteWorkoutExercise } =
-    useStore();
+  const {
+    hydrated,
+    workouts,
+    settings,
+    isDayClosed,
+    addExerciseToWorkout,
+    updateWorkoutExercise,
+    deleteWorkoutExercise,
+    setBodyWeight,
+  } = useStore();
   const [date, setDate] = useState<string>(todayISO());
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -51,6 +60,16 @@ export default function GymPage() {
           ›
         </button>
       </header>
+
+      <BodyWeightCard
+        key={date}
+        date={date}
+        workout={workout}
+        workouts={workouts}
+        unit={unit}
+        locked={closed}
+        onSet={(w) => setBodyWeight(date, w)}
+      />
 
       {exercises.length > 0 && (
         <section className="card">
@@ -115,6 +134,55 @@ export default function GymPage() {
       )}
 
       <ExercisePicker open={pickerOpen} onClose={() => setPickerOpen(false)} onPick={(ex) => addExerciseToWorkout(date, ex)} />
+    </div>
+  );
+}
+
+function BodyWeightCard({
+  date,
+  workout,
+  workouts,
+  unit,
+  locked,
+  onSet,
+}: {
+  date: string;
+  workout: Workout | undefined;
+  workouts: Workout[];
+  unit: string;
+  locked: boolean;
+  onSet: (weight: number | undefined) => void;
+}) {
+  // Today's own value, if already logged, is what's shown/edited. Otherwise the
+  // input starts empty — the last known weight is only a placeholder hint, so
+  // an old number never gets silently saved as today's without being typed.
+  const [str, setStr] = useState(workout?.bodyWeight != null ? String(workout.bodyWeight) : "");
+  const lastKnown = lastBodyWeight(workouts, addDays(date, -1));
+
+  return (
+    <div className="card bw-card">
+      <div className="bw-row">
+        <span className="bw-label">Body weight</span>
+        <div className="set-field bw-field">
+          <input
+            type="number"
+            inputMode="decimal"
+            step={unit === "lb" ? 0.5 : 0.1}
+            min={0}
+            placeholder={lastKnown != null ? String(lastKnown) : "0"}
+            readOnly={locked}
+            value={str}
+            onChange={(e) => {
+              const raw = e.target.value.replace(",", ".");
+              setStr(e.target.value);
+              const w = Number(raw);
+              onSet(Number.isFinite(w) && w > 0 ? w : undefined);
+            }}
+            aria-label="Body weight"
+          />
+          <span className="set-unit">{unit}</span>
+        </div>
+      </div>
     </div>
   );
 }

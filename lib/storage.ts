@@ -284,10 +284,12 @@ function normalizeWorkoutExercise(we: any): WorkoutExercise {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function normalizeWorkout(w: any): Workout {
+  const bodyWeight = Number(w?.bodyWeight);
   return {
     id: (w?.id as string) ?? uid(),
     date: String(w?.date ?? ""),
     exercises: Array.isArray(w?.exercises) ? w.exercises.map(normalizeWorkoutExercise) : [],
+    bodyWeight: Number.isFinite(bodyWeight) && bodyWeight > 0 ? Math.round(bodyWeight * 10) / 10 : undefined,
     note: (w?.note as string) || undefined,
     createdAt: (w?.createdAt as number) ?? Date.now(),
   };

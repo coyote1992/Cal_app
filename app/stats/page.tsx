@@ -28,8 +28,12 @@ import {
   categorySetsOnDays,
   distinctWeeks,
   formatHours,
+  formatWeight,
   gymSummary,
+  monthlyWeightAverage,
   strengthDaySet,
+  weeklyWeightAverage,
+  weightLogsOnDays,
 } from "@/lib/gym";
 import type { ExerciseCategory } from "@/lib/types";
 import { IconDumbbell, IconPulse } from "@/components/icons";
@@ -76,6 +80,7 @@ export default function StatsPage() {
           budget={settings.dailyBudget}
           proteinGoal={settings.proteinGoal}
           categoryGoals={settings.categoryGoals}
+          weightUnit={settings.weightUnit}
           weekStartsOn={settings.weekStartsOn}
           anchor={anchor}
           setAnchor={setAnchor}
@@ -88,6 +93,7 @@ export default function StatsPage() {
           budget={settings.dailyBudget}
           proteinGoal={settings.proteinGoal}
           categoryGoals={settings.categoryGoals}
+          weightUnit={settings.weightUnit}
           weekStartsOn={settings.weekStartsOn}
           anchor={anchor}
           setAnchor={setAnchor}
@@ -104,6 +110,7 @@ interface ViewProps {
   budget: number;
   proteinGoal: number;
   categoryGoals: Record<ExerciseCategory, number>;
+  weightUnit: string;
   weekStartsOn: 0 | 1;
   anchor: string;
   setAnchor: (iso: string) => void;
@@ -116,14 +123,18 @@ function GymStats({
   isoDays,
   denom,
   categoryGoals,
+  weightUnit,
 }: {
   workouts: Workout[];
   isoDays: string[];
   denom: number;
   categoryGoals: Record<ExerciseCategory, number>;
+  weightUnit: string;
 }) {
   const g = gymSummary(workouts, isoDays);
   const c = g.cardio;
+  const weightLogs = weightLogsOnDays(workouts, isoDays);
+  const weightAvg = weeklyWeightAverage(workouts, isoDays);
   return (
     <>
       <h2 className="section-title">Gym</h2>
@@ -223,11 +234,41 @@ function GymStats({
           </div>
         </div>
       )}
+
+      <div className="card weight-card">
+        <div className="cbd-head">
+          <span>Weight</span>
+          <span className="cbd-sets">{weightAvg != null ? `${formatWeight(weightAvg, weightUnit)} avg` : "–"}</span>
+        </div>
+        {weightLogs.length > 0 ? (
+          weightLogs.map((l) => (
+            <div className="cbd-ex" key={l.date}>
+              <span className="cbd-ex-name">
+                {shortDow(l.date)} {dayNumber(l.date)}
+              </span>
+              <span className="cbd-ex-sets">{formatWeight(l.weight, weightUnit)}</span>
+            </div>
+          ))
+        ) : (
+          <div className="cbd-empty">no weigh-ins yet</div>
+        )}
+      </div>
     </>
   );
 }
 
-function WeekView({ entries, workouts, closedDays, budget, proteinGoal, categoryGoals, weekStartsOn, anchor, setAnchor }: ViewProps) {
+function WeekView({
+  entries,
+  workouts,
+  closedDays,
+  budget,
+  proteinGoal,
+  categoryGoals,
+  weightUnit,
+  weekStartsOn,
+  anchor,
+  setAnchor,
+}: ViewProps) {
   const today = todayISO();
   const days = weekDays(anchor, weekStartsOn);
   const byDate = totalsByDate(entries);
@@ -336,18 +377,30 @@ function WeekView({ entries, workouts, closedDays, budget, proteinGoal, category
         </p>
       )}
 
-      <GymStats workouts={workouts} isoDays={days} denom={7} categoryGoals={categoryGoals} />
+      <GymStats workouts={workouts} isoDays={days} denom={7} categoryGoals={categoryGoals} weightUnit={weightUnit} />
     </div>
   );
 }
 
-function MonthView({ entries, workouts, closedDays, budget, proteinGoal, categoryGoals, weekStartsOn, anchor, setAnchor }: ViewProps) {
+function MonthView({
+  entries,
+  workouts,
+  closedDays,
+  budget,
+  proteinGoal,
+  categoryGoals,
+  weightUnit,
+  weekStartsOn,
+  anchor,
+  setAnchor,
+}: ViewProps) {
   const today = todayISO();
   const days = monthDays(anchor);
   const byDate = totalsByDate(entries);
   const proteinBy = proteinByDate(entries);
   const strengthDays = strengthDaySet(workouts);
   const cardioDays = cardioDaySet(workouts);
+  const weightMonth = monthlyWeightAverage(workouts, days, weekStartsOn);
   const blanks = monthLeadingBlanks(anchor, weekStartsOn);
   const headers = dowHeaders(weekStartsOn);
 
@@ -446,6 +499,20 @@ function MonthView({ entries, workouts, closedDays, budget, proteinGoal, categor
             );
           })}
         </div>
+      </div>
+
+      <div className="card weight-card">
+        <div className="cbd-head">
+          <span>Weight</span>
+          <span className="cbd-sets">{weightMonth.avg != null ? `${formatWeight(weightMonth.avg, weightUnit)} avg` : "–"}</span>
+        </div>
+        {weightMonth.avg != null ? (
+          <div className="weight-sub">
+            avg of {weightMonth.weekCount} week{weightMonth.weekCount === 1 ? "" : "s"} logged
+          </div>
+        ) : (
+          <div className="cbd-empty">no weigh-ins yet</div>
+        )}
       </div>
 
       <div className="card" style={{ marginTop: 14 }}>

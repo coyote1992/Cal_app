@@ -197,3 +197,60 @@ export function distinctWeeks(days: string[], weekStartsOn: 0 | 1): number {
   return new Set(days.map((d) => startOfWeek(d, weekStartsOn))).size;
 }
 
+// ── body weight ──────────────────────────────────────────────
+export interface WeightLog {
+  date: string;
+  weight: number;
+}
+
+function average(nums: number[]): number | null {
+  return nums.length ? nums.reduce((s, v) => s + v, 0) / nums.length : null;
+}
+
+/** Body-weight logs within a set of days, oldest first. */
+export function weightLogsOnDays(workouts: Workout[], days: string[]): WeightLog[] {
+  const inDays = new Set(days);
+  return workouts
+    .filter((w) => inDays.has(w.date) && w.bodyWeight != null && w.bodyWeight > 0)
+    .map((w) => ({ date: w.date, weight: w.bodyWeight as number }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Plain average of the weigh-ins within a set of days (e.g. one week). */
+export function weeklyWeightAverage(workouts: Workout[], days: string[]): number | null {
+  return average(weightLogsOnDays(workouts, days).map((l) => l.weight));
+}
+
+/** Average of each week's average weight, for the weeks touching these days
+ *  (e.g. a month) — not a flat average of every log, so a week with more
+ *  weigh-ins doesn't outweigh a week with fewer. */
+export function monthlyWeightAverage(
+  workouts: Workout[],
+  days: string[],
+  weekStartsOn: 0 | 1,
+): { avg: number | null; weekCount: number } {
+  const logs = weightLogsOnDays(workouts, days);
+  if (!logs.length) return { avg: null, weekCount: 0 };
+  const byWeek = new Map<string, number[]>();
+  for (const l of logs) {
+    const wk = startOfWeek(l.date, weekStartsOn);
+    if (!byWeek.has(wk)) byWeek.set(wk, []);
+    byWeek.get(wk)!.push(l.weight);
+  }
+  const weekAverages = [...byWeek.values()].map((arr) => average(arr) as number);
+  return { avg: average(weekAverages), weekCount: weekAverages.length };
+}
+
+/** Most recent logged body weight on/before a date — to prefill the next entry. */
+export function lastBodyWeight(workouts: Workout[], onOrBeforeISO?: string): number | undefined {
+  const sorted = workouts
+    .filter((w) => w.bodyWeight != null && w.bodyWeight > 0 && (!onOrBeforeISO || w.date <= onOrBeforeISO))
+    .sort((a, b) => b.date.localeCompare(a.date));
+  return sorted[0]?.bodyWeight;
+}
+
+/** "82.4 kg". */
+export function formatWeight(v: number, unit: string): string {
+  return `${Math.round(v * 10) / 10} ${unit}`;
+}
+

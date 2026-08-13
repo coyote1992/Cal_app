@@ -1336,6 +1336,24 @@ input[type="number"] {
   flex: 1;
   min-width: 130px;
 }
+.bw-card {
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+.bw-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.bw-label {
+  font-weight: 700;
+  font-size: 14px;
+}
+.bw-field {
+  width: 130px;
+  flex: 0 0 auto;
+}
 .seg-mini {
   display: inline-flex;
   background: var(--surface-2);
@@ -1618,6 +1636,19 @@ input[type="number"] {
 .cardio-card {
   margin-top: 10px;
   padding: 14px;
+}
+/* Set apart from the sets/hours boxes above it — different metric, so a
+   distinct tint and extra breathing room instead of just another plain box. */
+.weight-card {
+  margin-top: 18px;
+  padding: 14px;
+  background: var(--accent-weak);
+  border-color: transparent;
+}
+.weight-sub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
 }
 .cardio-split {
   display: flex;

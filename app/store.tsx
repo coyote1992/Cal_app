@@ -121,6 +121,7 @@ interface StoreValue {
   ) => void;
   updateWorkoutExercise: (date: string, workoutExerciseId: string, patch: WorkoutExercisePatch) => void;
   deleteWorkoutExercise: (date: string, workoutExerciseId: string) => void;
+  setBodyWeight: (date: string, weight: number | undefined) => void;
   closedDays: string[];
   isDayClosed: (date: string) => boolean;
   closeDay: (date: string) => void;
@@ -388,16 +389,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
-  // Removing the last exercise also drops the (now empty) workout, so an empty
-  // session never lingers as a phantom gym day.
+  // Removing the last exercise also drops the (now empty) workout — unless a
+  // body weight is still logged for that day, which is a valid entry on its own.
   const deleteWorkoutExercise = useCallback((date: string, workoutExerciseId: string) => {
     setData((d) => ({
       ...d,
       workouts: d.workouts
         .map((w) => (w.date !== date ? w : { ...w, exercises: w.exercises.filter((e) => e.id !== workoutExerciseId) }))
-        .filter((w) => w.exercises.length > 0),
+        .filter((w) => w.exercises.length > 0 || w.bodyWeight != null),
       updatedAt: Date.now(),
     }));
+  }, []);
+
+  // Find-or-create the day's workout to hold a weigh-in; clearing it back to
+  // empty drops the workout too, unless exercises are still logged that day.
+  const setBodyWeight = useCallback((date: string, weight: number | undefined) => {
+    const clean = weight != null && Number.isFinite(weight) && weight > 0 ? Math.round(weight * 10) / 10 : undefined;
+    setData((d) => {
+      const idx = d.workouts.findIndex((w) => w.date === date);
+      let workouts: Workout[];
+      if (idx === -1) {
+        if (clean == null) return d;
+        workouts = [...d.workouts, { id: uid(), date, exercises: [], bodyWeight: clean, createdAt: Date.now() }];
+      } else {
+        workouts = d.workouts
+          .map((w, i) => (i === idx ? { ...w, bodyWeight: clean } : w))
+          .filter((w) => w.exercises.length > 0 || w.bodyWeight != null);
+      }
+      return { ...d, workouts, updatedAt: Date.now() };
+    });
   }, []);
 
   const replaceAll = useCallback((next: AppData) => setData({ ...next, updatedAt: Date.now() }), []);
@@ -462,6 +482,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     addExerciseToWorkout,
     updateWorkoutExercise,
     deleteWorkoutExercise,
+    setBodyWeight,
     closedDays: data.closedDays,
     isDayClosed,
     closeDay,

@@ -19,6 +19,26 @@ export function setSyncCode(code: string): void {
 
 export function clearSyncCode(): void {
   window.localStorage.removeItem(CODE_KEY);
+  clearSyncBase();
+}
+
+// The `updatedAt` of the version this device last synced with the cloud. It's
+// what lets us tell "I changed something" from "the other device changed
+// something" (see lib/reconcile.ts) without trusting the devices' clocks.
+const BASE_KEY = "calorie-tracker:sync-base";
+
+export function getSyncBase(): number | null {
+  if (typeof window === "undefined") return null;
+  const n = Number(window.localStorage.getItem(BASE_KEY));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+export function setSyncBase(updatedAt: number): void {
+  window.localStorage.setItem(BASE_KEY, String(updatedAt));
+}
+
+export function clearSyncBase(): void {
+  window.localStorage.removeItem(BASE_KEY);
 }
 
 export function generateSyncCode(): string {

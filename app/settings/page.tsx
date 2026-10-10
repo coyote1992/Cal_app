@@ -21,6 +21,8 @@ export default function SettingsPage() {
     syncCode,
     syncStatus,
     syncError,
+    lastSyncedAt,
+    syncNow,
     startNewSync,
     linkSync,
     unlinkSync,
@@ -231,6 +233,12 @@ export default function SettingsPage() {
             <div style={{ marginBottom: 12 }}>
               <div style={{ fontWeight: 600 }}>
                 {syncStatus === "syncing" ? "Syncing…" : syncStatus === "error" ? "Sync error" : "Synced"}
+                {lastSyncedAt != null && syncStatus !== "error" && (
+                  <span style={{ fontWeight: 500, color: "var(--muted)" }}>
+                    {" "}
+                    · checked {new Date(lastSyncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                )}
               </div>
               <div className="hint">This device&apos;s sync code — enter the same code on another device to link it.</div>
             </div>
@@ -238,6 +246,9 @@ export default function SettingsPage() {
               <div className="input" style={{ fontFamily: "monospace", letterSpacing: 1, textAlign: "center" }}>
                 {syncCode}
               </div>
+              <button className="btn btn-primary btn-block" disabled={syncStatus === "syncing"} onClick={() => void syncNow()}>
+                Sync now
+              </button>
               <button className="btn btn-ghost btn-block" onClick={doCopyCode}>
                 Copy code
               </button>

@@ -26,11 +26,14 @@ import { computeCalories, isPer100, uid } from "@/lib/util";
 import {
   clearSyncCode,
   generateSyncCode,
+  getSyncBase,
   getSyncCode,
   pullSnapshot,
   pushSnapshot,
+  setSyncBase,
   setSyncCode as persistSyncCode,
 } from "@/lib/sync";
+import { decideSync, mergeData } from "@/lib/reconcile";
 
 export type SyncStatus = "idle" | "syncing" | "synced" | "error";
 export interface SyncResult {
@@ -132,6 +135,9 @@ interface StoreValue {
   syncCode: string | null;
   syncStatus: SyncStatus;
   syncError: string | null;
+  /** When this device last confirmed it matches the cloud (ms), or null. */
+  lastSyncedAt: number | null;
+  syncNow: () => Promise<SyncResult>;
   startNewSync: () => Promise<SyncResult>;
   linkSync: (code: string) => Promise<SyncResult>;
   unlinkSync: () => void;
@@ -162,65 +168,121 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [syncCode, setSyncCodeState] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
   const [syncError, setSyncError] = useState<string | null>(null);
-  const skipNextPush = useRef(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Always the latest data, readable from async code without stale closures.
+  const dataRef = useRef<AppData>(data);
+  const inFlight = useRef(false);
+  const rerun = useRef(false);
 
-  // Initial hydrate: load local data, then if this device is linked, pull the
-  // cloud snapshot and keep whichever copy was modified most recently.
   useEffect(() => {
-    const local = loadData();
-    const code = getSyncCode();
-    setSyncCodeState(code);
+    dataRef.current = data;
+  }, [data]);
 
-    if (!code) {
-      setData(local);
-      setHydrated(true);
-      return;
-    }
-
-    setSyncStatus("syncing");
-    pullSnapshot(code)
-      .then((cloud) => {
-        if (cloud && cloud.updatedAt >= local.updatedAt) {
-          skipNextPush.current = true;
-          setData(normalize(cloud.data));
-        } else {
-          setData(local);
-        }
-        setSyncStatus("synced");
-      })
-      .catch((e) => {
-        setData(local);
-        setSyncStatus("error");
-        setSyncError((e as Error).message);
-      })
-      .finally(() => setHydrated(true));
+  // Load what's on this device straight away; the cloud catches up in the
+  // background (see the sync effects below) instead of holding up the UI.
+  useEffect(() => {
+    setData(loadData());
+    setSyncCodeState(getSyncCode());
+    setHydrated(true);
   }, []);
 
-  // Persist locally on every change, and — if linked — push to the cloud on a
-  // short debounce so rapid edits (e.g. typing a budget) don't spam requests.
+  /**
+   * Bring this device and the cloud copy level. Looks at the cloud first and
+   * only then decides — adopt theirs, push ours, or merge both when each side
+   * changed — so a stale device can never blindly overwrite newer data.
+   * Safe to call as often as we like; overlapping calls collapse into one rerun.
+   */
+  const reconcile = useCallback(async (code: string): Promise<SyncResult> => {
+    if (inFlight.current) {
+      rerun.current = true;
+      return { ok: true };
+    }
+    inFlight.current = true;
+    try {
+      do {
+        rerun.current = false;
+        const cloud = await pullSnapshot(code);
+        const local = dataRef.current; // read after the await: it may have changed
+        const action = decideSync(getSyncBase(), local.updatedAt, cloud ? cloud.updatedAt : null);
+
+        if (action === "adopt" && cloud) {
+          setSyncStatus("syncing");
+          const next = normalize(cloud.data);
+          dataRef.current = next;
+          setData(next);
+          setSyncBase(cloud.updatedAt);
+        } else if (action === "merge" && cloud) {
+          setSyncStatus("syncing");
+          const merged = mergeData(local, normalize(cloud.data));
+          dataRef.current = merged;
+          setData(merged);
+          await pushSnapshot(code, merged, merged.updatedAt);
+          setSyncBase(merged.updatedAt);
+        } else if (action === "push") {
+          setSyncStatus("syncing");
+          await pushSnapshot(code, local, local.updatedAt);
+          setSyncBase(local.updatedAt);
+        } else if (cloud) {
+          setSyncBase(cloud.updatedAt);
+        }
+      } while (rerun.current);
+      setSyncStatus("synced");
+      setSyncError(null);
+      setLastSyncedAt(Date.now());
+      return { ok: true };
+    } catch (e) {
+      const message = (e as Error).message;
+      setSyncStatus("error");
+      setSyncError(message);
+      return { ok: false, error: message };
+    } finally {
+      inFlight.current = false;
+    }
+  }, []);
+
+  // Persist locally on every change, and — if linked — reconcile with the cloud
+  // on a short debounce so rapid edits (e.g. typing a budget) don't spam requests.
   useEffect(() => {
     if (!hydrated) return;
     saveData(data);
     if (!syncCode) return;
-    if (skipNextPush.current) {
-      skipNextPush.current = false;
-      return;
-    }
     if (pushTimer.current) clearTimeout(pushTimer.current);
     pushTimer.current = setTimeout(() => {
-      setSyncStatus("syncing");
-      pushSnapshot(syncCode, data, data.updatedAt)
-        .then(() => setSyncStatus("synced"))
-        .catch((e) => {
-          setSyncStatus("error");
-          setSyncError((e as Error).message);
-        });
+      void reconcile(syncCode);
     }, 1000);
     return () => {
       if (pushTimer.current) clearTimeout(pushTimer.current);
     };
-  }, [data, hydrated, syncCode]);
+  }, [data, hydrated, syncCode, reconcile]);
+
+  // Pull in what the other device did: on open, whenever the app comes back to
+  // the foreground (a home-screen app can sit suspended for days without ever
+  // reloading), when the network returns, and once a minute while it's open.
+  useEffect(() => {
+    if (!hydrated || !syncCode) return;
+    let last = 0;
+    const kick = () => {
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - last < 1500) return; // resume fires several events at once
+      last = now;
+      void reconcile(syncCode);
+    };
+    kick();
+    document.addEventListener("visibilitychange", kick);
+    window.addEventListener("focus", kick);
+    window.addEventListener("pageshow", kick);
+    window.addEventListener("online", kick);
+    const timer = window.setInterval(kick, 60_000);
+    return () => {
+      document.removeEventListener("visibilitychange", kick);
+      window.removeEventListener("focus", kick);
+      window.removeEventListener("pageshow", kick);
+      window.removeEventListener("online", kick);
+      window.clearInterval(timer);
+    };
+  }, [hydrated, syncCode, reconcile]);
 
   const addFood = useCallback((input: FoodInput): Food => {
     const food = makeFood(input);
@@ -424,43 +486,51 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const clearAll = useCallback(() => setData({ ...emptyData(), updatedAt: Date.now() }), []);
   const exportJSON = () => JSON.stringify(data, null, 2);
 
-  // Pull first (in case the code already has cloud data), then push whatever
-  // isn't overwritten by that pull — so linking never silently drops local work.
-  const linkSync = useCallback(
-    async (rawCode: string): Promise<SyncResult> => {
-      const code = rawCode.trim().toUpperCase();
-      if (!code) return { ok: false, error: "Enter a code." };
-      setSyncStatus("syncing");
-      try {
-        const cloud = await pullSnapshot(code);
-        persistSyncCode(code);
-        setSyncCodeState(code);
-        if (cloud) {
-          skipNextPush.current = true;
-          setData(normalize(cloud.data));
-        } else {
-          await pushSnapshot(code, data, data.updatedAt);
-        }
-        setSyncStatus("synced");
-        setSyncError(null);
-        return { ok: true };
-      } catch (e) {
-        const message = (e as Error).message;
-        setSyncStatus("error");
-        setSyncError(message);
-        return { ok: false, error: message };
+  // Linking to a code that already has data adopts that data (it's the other
+  // device's log); a brand-new code is seeded with what's on this device.
+  const linkSync = useCallback(async (rawCode: string): Promise<SyncResult> => {
+    const code = rawCode.trim().toUpperCase();
+    if (!code) return { ok: false, error: "Enter a code." };
+    setSyncStatus("syncing");
+    try {
+      const cloud = await pullSnapshot(code);
+      persistSyncCode(code);
+      setSyncCodeState(code);
+      if (cloud) {
+        const next = normalize(cloud.data);
+        dataRef.current = next;
+        setData(next);
+        setSyncBase(cloud.updatedAt);
+      } else {
+        const local = dataRef.current;
+        await pushSnapshot(code, local, local.updatedAt);
+        setSyncBase(local.updatedAt);
       }
-    },
-    [data],
-  );
+      setSyncStatus("synced");
+      setSyncError(null);
+      setLastSyncedAt(Date.now());
+      return { ok: true };
+    } catch (e) {
+      const message = (e as Error).message;
+      setSyncStatus("error");
+      setSyncError(message);
+      return { ok: false, error: message };
+    }
+  }, []);
 
   const startNewSync = useCallback(() => linkSync(generateSyncCode()), [linkSync]);
+
+  const syncNow = useCallback(
+    async (): Promise<SyncResult> => (syncCode ? reconcile(syncCode) : { ok: false, error: "Sync is off." }),
+    [syncCode, reconcile],
+  );
 
   const unlinkSync = useCallback(() => {
     clearSyncCode();
     setSyncCodeState(null);
     setSyncStatus("idle");
     setSyncError(null);
+    setLastSyncedAt(null);
   }, []);
 
   const value: StoreValue = {
@@ -493,6 +563,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     syncCode,
     syncStatus,
     syncError,
+    lastSyncedAt,
+    syncNow,
     startNewSync,
     linkSync,
     unlinkSync,

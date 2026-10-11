@@ -6,15 +6,18 @@ plain CSS — no UI framework.
 
 ## How it works
 
-- **Today** — a calorie ring showing budget / consumed / remaining, day
-  navigation, and a running log. Tap **Add food** to log something.
-- **Add food** — two ways:
-  - **Frequent**: pick from your saved items and set a quantity.
-  - **One-off**: type a name + calories for something you won't reuse.
-  - **Photo** (coming next): snap/upload a photo and let a vision model estimate.
-- **Foods** — manage your frequently-eaten items (name, calories/serving, unit).
-- **Stats** — weekly bar chart and a monthly calendar heatmap, with totals and
-  averages.
+- **Log** — one page for everything you record. Top: calorie + protein rings,
+  *Close today*, and body weight. Below, a **Calories / Movement** toggle:
+  - **Calories** — *Photo* (AI estimate) and *Calories* (type a number) open
+    inline; below them a stacked *Recent* list and one dropdown per saved-food
+    category. Tap a food to set the amount and add it. Pencil edits/deletes a
+    food in place; *New food* adds one in place. Tap a logged row to correct it.
+  - **Movement** — *Recent* exercises plus a dropdown per category (Push, Pull,
+    Lower, Arms & Delt, Cardio, Stretching). Tap an exercise to add it
+    (pre-filled from last time), then set sets × reps and weight / bodyweight
+    (cardio: intensity + hours; stretching: minutes) in the log below.
+- **Stats** — weekly bar chart and a monthly calendar heatmap, with totals,
+  averages and gym stats.
 - **Settings** — daily budget, week start day, and JSON **export/import** for
   backup and moving data between devices.
 

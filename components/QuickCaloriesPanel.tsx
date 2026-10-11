@@ -1,42 +1,18 @@
 "use client";
 
 // "Calories": the fastest path — type a number you already know and it lands in
-// today's log. Optional label. No category/basis fuss.
+// the day's log. Optional label. No category/basis fuss. Renders inline on the
+// Log page (mount it to open, unmount to close).
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useStore } from "@/app/store";
 import { formatKcal } from "@/lib/util";
 
-export default function QuickCaloriesSheet({
-  open,
-  onClose,
-  date,
-}: {
-  open: boolean;
-  onClose: () => void;
-  date: string;
-}) {
+export default function QuickCaloriesPanel({ onClose, date }: { onClose: () => void; date: string }) {
   const { addEntry } = useStore();
   const [kcal, setKcal] = useState("");
   const [protein, setProtein] = useState("");
   const [name, setName] = useState("");
-
-  useEffect(() => {
-    if (open) {
-      setKcal("");
-      setProtein("");
-      setName("");
-    }
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
 
   const k = Math.round(Number(kcal));
   const valid = Number.isFinite(k) && k > 0;
@@ -58,14 +34,13 @@ export default function QuickCaloriesSheet({
   }
 
   return (
-    <div className="sheet-backdrop" onClick={onClose}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Add calories">
-        <div className="sheet-head">
-          <div className="sheet-title">Add calories</div>
-          <button className="link" onClick={onClose}>
-            Cancel
-          </button>
-        </div>
+    <div className="inline-panel" role="group" aria-label="Add calories">
+      <div className="panel-head">
+        <div className="panel-title">Add calories</div>
+        <button className="link" onClick={onClose}>
+          Cancel
+        </button>
+      </div>
 
         <div className="ph-macros">
           <div className="field">
@@ -113,7 +88,6 @@ export default function QuickCaloriesSheet({
         <button className="btn btn-primary" disabled={!valid} onClick={add}>
           Add{valid ? ` · ${formatKcal(k)} kcal` : ""}
         </button>
-      </div>
     </div>
   );
 }

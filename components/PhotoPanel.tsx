@@ -1,12 +1,12 @@
 "use client";
 
 // "Photo": snap or choose a photo, let a vision model estimate the calories, then
-// add the (editable) result straight to today's log. The estimate call lives in
+// add the (editable) result straight to the day's log. Renders inline on the Log
+// page (mount it to open, unmount to close). The estimate call lives in
 // /api/estimate — until an API key is set it returns a labeled demo number so the
-// whole flow works. This replaces the old manual "New stuff" form (that job now
-// belongs to the Foods tab).
+// whole flow works.
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { useStore } from "@/app/store";
 import { formatKcal, formatQty } from "@/lib/util";
@@ -57,15 +57,7 @@ function downscaleToDataUrl(file: File): Promise<string> {
   });
 }
 
-export default function PhotoSheet({
-  open,
-  onClose,
-  date,
-}: {
-  open: boolean;
-  onClose: () => void;
-  date: string;
-}) {
+export default function PhotoPanel({ onClose, date }: { onClose: () => void; date: string }) {
   const { addEntry } = useStore();
   const [image, setImage] = useState<string | null>(null);
   const [hint, setHint] = useState("");
@@ -76,28 +68,6 @@ export default function PhotoSheet({
   const [kcal, setKcal] = useState("");
   const [protein, setProtein] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (open) {
-      setImage(null);
-      setHint("");
-      setStatus("idle");
-      setError("");
-      setResult(null);
-      setName("");
-      setKcal("");
-      setProtein("");
-    }
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
 
   async function onFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -163,14 +133,13 @@ export default function PhotoSheet({
   const kNum = Number(kcal);
 
   return (
-    <div className="sheet-backdrop" onClick={onClose}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Estimate from photo">
-        <div className="sheet-head">
-          <div className="sheet-title">Photo estimate</div>
-          <button className="link" onClick={onClose}>
-            Cancel
-          </button>
-        </div>
+    <div className="inline-panel" role="group" aria-label="Estimate from photo">
+      <div className="panel-head">
+        <div className="panel-title">Photo estimate</div>
+        <button className="link" onClick={onClose}>
+          Cancel
+        </button>
+      </div>
 
         {/* No `capture` attribute: that would force the camera and hide the
             photo library on mobile. Without it the user gets both options. */}
@@ -263,13 +232,12 @@ export default function PhotoSheet({
                   </div>
                 )}
                 <button className="btn btn-primary" style={{ marginTop: 12 }} disabled={!(kNum > 0)} onClick={addToLog}>
-                  Add to today{kNum > 0 ? ` · ${formatKcal(kNum)} kcal` : ""}
+                  Add to log{kNum > 0 ? ` · ${formatKcal(kNum)} kcal` : ""}
                 </button>
               </div>
             )}
           </>
         )}
-      </div>
     </div>
   );
 }

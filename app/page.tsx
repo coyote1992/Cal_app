@@ -1,26 +1,39 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useStore } from "./store";
 import Ring from "@/components/Ring";
-import SavedSheet from "@/components/SavedSheet";
-import PhotoSheet from "@/components/PhotoSheet";
-import QuickCaloriesSheet from "@/components/QuickCaloriesSheet";
-import { IconBookmark, IconCamera, IconHash, IconLock, IconTrash } from "@/components/icons";
+import BodyWeight from "@/components/BodyWeight";
+import CaloriesSection from "@/components/CaloriesSection";
+import MovementSection from "@/components/MovementSection";
+import { IconLock } from "@/components/icons";
 import { addDays, dayLabel, todayISO } from "@/lib/date";
-import { caloriesForDate, entriesForDate, proteinForDate } from "@/lib/calc";
+import { caloriesForDate, proteinForDate } from "@/lib/calc";
 import { formatKcal, formatQty } from "@/lib/util";
 
-export default function TodayPage() {
-  const { hydrated, entries, settings, deleteEntry, isDayClosed, closeDay, reopenDay } = useStore();
+type Mode = "calories" | "movement";
+const MODE_KEY = "calorie-tracker:log-mode";
+
+export default function LogPage() {
+  const { hydrated, entries, settings, isDayClosed, closeDay, reopenDay } = useStore();
   const [date, setDate] = useState<string>(todayISO());
-  const [savedOpen, setSavedOpen] = useState(false);
-  const [photoOpen, setPhotoOpen] = useState(false);
-  const [quickOpen, setQuickOpen] = useState(false);
+  const [mode, setMode] = useState<Mode>("calories");
+
+  // Remember which half you were in (a per-device convenience, nothing more).
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(MODE_KEY) === "movement") setMode("movement");
+    } catch {}
+  }, []);
+  function pickMode(m: Mode) {
+    setMode(m);
+    try {
+      window.localStorage.setItem(MODE_KEY, m);
+    } catch {}
+  }
 
   if (!hydrated) return <div className="loading">Loading…</div>;
 
-  const dayEntries = entriesForDate(entries, date);
   const consumed = caloriesForDate(entries, date);
   const protein = proteinForDate(entries, date);
   const budget = settings.dailyBudget;
@@ -44,12 +57,7 @@ export default function TodayPage() {
             </button>
           )}
         </div>
-        <button
-          className="icon-btn"
-          onClick={() => setDate(addDays(date, 1))}
-          aria-label="Next day"
-          disabled={isToday}
-        >
+        <button className="icon-btn" onClick={() => setDate(addDays(date, 1))} aria-label="Next day" disabled={isToday}>
           ›
         </button>
       </header>
@@ -94,82 +102,36 @@ export default function TodayPage() {
           </button>
         </div>
       ) : (
-        <>
-          <div className="today-actions">
-            <button className="action-btn accent" onClick={() => setSavedOpen(true)}>
-              <IconBookmark className="action-ic" width={22} height={22} />
-              <span className="action-title">Saved</span>
-              <span className="action-sub">your foods</span>
-            </button>
-            <button className="action-btn" onClick={() => setPhotoOpen(true)}>
-              <IconCamera className="action-ic" width={22} height={22} />
-              <span className="action-title">Photo</span>
-              <span className="action-sub">AI estimate</span>
-            </button>
-            <button className="action-btn" onClick={() => setQuickOpen(true)}>
-              <IconHash className="action-ic" width={22} height={22} />
-              <span className="action-title">Calories</span>
-              <span className="action-sub">type a number</span>
-            </button>
-          </div>
-
-          <button
-            className="close-day-btn"
-            onClick={() => {
-              if (confirm(`Close ${isToday ? "today" : "this day"}? You won't be able to change it afterwards (you can still reopen it).`)) {
-                closeDay(date);
-              }
-            }}
-          >
-            <IconLock width={15} height={15} />
-            Close {isToday ? "today" : "this day"}
-          </button>
-        </>
+        <button
+          className="close-day-btn"
+          onClick={() => {
+            if (confirm(`Close ${isToday ? "today" : "this day"}? You won't be able to change it afterwards (you can still reopen it).`)) {
+              closeDay(date);
+            }
+          }}
+        >
+          <IconLock width={15} height={15} />
+          Close {isToday ? "today" : "this day"}
+        </button>
       )}
 
-      <h2 className="section-title">
-        Log <span className="count">{dayEntries.length}</span>
-      </h2>
-      {dayEntries.length === 0 ? (
-        <div className="empty">
-          Nothing logged yet.
-          <br />
-          {closed ? "This day was closed empty." : "Tap a button above to start."}
-        </div>
+      <BodyWeight key={`bw-${date}`} date={date} locked={closed} />
+
+      <div className="segmented mode-toggle" role="tablist" aria-label="What to log">
+        <button role="tab" aria-selected={mode === "calories"} className={mode === "calories" ? "active" : ""} onClick={() => pickMode("calories")}>
+          Calories
+        </button>
+        <button role="tab" aria-selected={mode === "movement"} className={mode === "movement" ? "active" : ""} onClick={() => pickMode("movement")}>
+          Movement
+        </button>
+      </div>
+
+      {/* Remount per day so open panels / forms never carry over between days. */}
+      {mode === "calories" ? (
+        <CaloriesSection key={`sec-${date}`} date={date} locked={closed} />
       ) : (
-        <ul className="entry-list">
-          {dayEntries.map((e) => {
-            const base =
-              e.basis === "per100g"
-                ? `${formatQty(e.quantity)} g · ${formatKcal(e.perUnit)} kcal/100g`
-                : e.basis === "per100ml"
-                  ? `${formatQty(e.quantity)} ml · ${formatKcal(e.perUnit)} kcal/100ml`
-                  : `${formatQty(e.quantity)} × ${formatKcal(e.perUnit)} kcal`;
-            const meta = e.protein != null && e.protein > 0 ? `${base} · ${formatQty(e.protein)} g P` : base;
-            return (
-              <li key={e.id} className="entry-row">
-                <div className="entry-main">
-                  <div className="entry-name">
-                    {e.name}
-                    {e.source === "photo" ? " 📷" : ""}
-                  </div>
-                  <div className="entry-meta">{meta}</div>
-                </div>
-                <div className="entry-cal">{formatKcal(e.calories)}</div>
-                {!closed && (
-                  <button className="icon-btn danger" onClick={() => deleteEntry(e.id)} aria-label={`Delete ${e.name}`}>
-                    <IconTrash width={18} height={18} />
-                  </button>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+        <MovementSection key={`sec-${date}`} date={date} locked={closed} />
       )}
-
-      <SavedSheet open={savedOpen} onClose={() => setSavedOpen(false)} date={date} />
-      <PhotoSheet open={photoOpen} onClose={() => setPhotoOpen(false)} date={date} />
-      <QuickCaloriesSheet open={quickOpen} onClose={() => setQuickOpen(false)} date={date} />
     </div>
   );
 }

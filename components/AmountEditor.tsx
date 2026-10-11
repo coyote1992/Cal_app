@@ -16,6 +16,7 @@ export default function AmountEditor({
   proteinRate,
   onAdd,
   addLabel = "Add",
+  initial,
 }: {
   name: string;
   sub?: string;
@@ -25,8 +26,10 @@ export default function AmountEditor({
   proteinRate?: number;
   onAdd: (amount: number) => void;
   addLabel?: string;
+  /** Starting amount; defaults to 1 serving / 100 g / 100 ml. */
+  initial?: number;
 }) {
-  const [raw, setRaw] = useState<string>(() => String(defaultAmount(basis)));
+  const [raw, setRaw] = useState<string>(() => String(initial ?? defaultAmount(basis)));
   const amount = Math.max(0, Number(raw) || 0);
   const total = computeCalories(basis, rate, amount);
   const proteinTotal = proteinRate != null ? computeCalories(basis, proteinRate, amount) : null;

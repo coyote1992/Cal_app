@@ -1,21 +1,26 @@
-// Gym helpers. Strength is logged as a single working weight × a 2-or-3 set
-// count (reps fixed at 8); cardio as intensity + hours. The metrics that
-// matter here are sets per movement pattern (push/pull/lower/arms & delt) per
-// day — not aggregate tonnage — plus cardio time. Cardio is its own category,
-// so every cardio exercise lives there and it never accrues "sets".
+// Gym helpers. Strength is logged as sets × reps at one working weight (or
+// bodyweight); cardio as intensity + hours; stretching as minutes. The metrics
+// that matter here are sets per movement pattern (push/pull/lower/arms & delt)
+// — not aggregate tonnage — plus cardio time. Cardio and stretching are their
+// own categories, so they never accrue "sets".
 
 import type {
   CardioIntensity,
   CardioLog,
   Exercise,
   ExerciseCategory,
+  ExerciseKind,
   StrengthLog,
+  StretchLog,
   Workout,
   WorkoutExercise,
 } from "./types";
 import { startOfWeek } from "./date";
 
+/** The categories Stats and Settings goals track. */
 export const CATEGORIES: ExerciseCategory[] = ["push", "pull", "lower", "arms", "cardio"];
+/** Every category you can log under — the Log page's dropdowns. */
+export const LOG_CATEGORIES: ExerciseCategory[] = ["push", "pull", "lower", "arms", "cardio", "stretching"];
 /** The strength patterns — the ones that accrue sets. */
 export const STRENGTH_CATEGORIES: ExerciseCategory[] = ["push", "pull", "lower", "arms"];
 export const CATEGORY_LABEL: Record<ExerciseCategory, string> = {
@@ -24,7 +29,12 @@ export const CATEGORY_LABEL: Record<ExerciseCategory, string> = {
   lower: "Lower",
   arms: "Arms & Delt",
   cardio: "Cardio",
+  stretching: "Stretching",
 };
+/** What kind of log an exercise in a category produces. */
+export function kindForCategory(c: ExerciseCategory): ExerciseKind {
+  return c === "cardio" ? "cardio" : c === "stretching" ? "stretch" : "strength";
+}
 export const INTENSITY_LABEL: Record<CardioIntensity, string> = { low: "Low", medium: "Medium", high: "High" };
 
 /** Hours rendered compactly: 0.5 → "0.5 h", 1 → "1 h". */
@@ -39,15 +49,23 @@ export function isCardio(we: WorkoutExercise): we is CardioLog {
   return we.kind === "cardio";
 }
 
-/** A strength exercise "counts" once a weight is entered; cardio once hours are. */
+export function isStretch(we: WorkoutExercise): we is StretchLog {
+  return we.kind === "stretch";
+}
+
+/** A strength exercise "counts" once a weight is entered (or it's bodyweight);
+ *  cardio once hours are; stretching once minutes are. */
 export function strengthLogged(we: WorkoutExercise): we is StrengthLog {
-  return isStrength(we) && we.weight != null && we.weight > 0;
+  return isStrength(we) && (we.isBodyweight === true || (we.weight != null && we.weight > 0));
+}
+export function stretchLogged(we: WorkoutExercise): we is StretchLog {
+  return isStretch(we) && we.minutes != null && we.minutes > 0;
 }
 export function cardioLogged(we: WorkoutExercise): we is CardioLog {
   return isCardio(we) && we.hours != null && we.hours > 0;
 }
 export function exerciseLogged(we: WorkoutExercise): boolean {
-  return strengthLogged(we) || cardioLogged(we);
+  return strengthLogged(we) || cardioLogged(we) || stretchLogged(we);
 }
 export function workoutHasContent(w: Workout | undefined): boolean {
   return !!w && w.exercises.some(exerciseLogged);
@@ -59,7 +77,7 @@ export function workoutForDate(workouts: Workout[], iso: string): Workout | unde
 
 /** Sets logged per category for one list of exercises (unentered lifts ignored). */
 export function categorySets(exercises: WorkoutExercise[]): Record<ExerciseCategory, number> {
-  const r: Record<ExerciseCategory, number> = { push: 0, pull: 0, lower: 0, arms: 0, cardio: 0 };
+  const r: Record<ExerciseCategory, number> = { push: 0, pull: 0, lower: 0, arms: 0, cardio: 0, stretching: 0 };
   for (const e of exercises) if (strengthLogged(e)) r[e.category] += e.sets;
   return r;
 }
@@ -71,7 +89,7 @@ export function cardioHours(exercises: WorkoutExercise[]): number {
 
 // ── library grouping ────────────────────────────────────────
 export function exercisesByCategory(exercises: Exercise[]): Array<{ category: ExerciseCategory; exercises: Exercise[] }> {
-  return CATEGORIES.map((category) => ({
+  return LOG_CATEGORIES.map((category) => ({
     category,
     exercises: exercises.filter((e) => e.category === category).sort((a, b) => a.name.localeCompare(b.name)),
   }));
@@ -100,6 +118,38 @@ export function lastLogForExercise(
   return undefined;
 }
 
+/** One-line summary of a logged exercise: "3 × 8 · 60 kg", "3 × 8 · BW", "0.5 h · medium", "10 min". */
+export function describeLog(we: WorkoutExercise, unit: string): string {
+  if (we.kind === "cardio") {
+    return [we.hours != null ? formatHours(we.hours) : "", INTENSITY_LABEL[we.intensity].toLowerCase()].filter(Boolean).join(" · ");
+  }
+  if (we.kind === "stretch") return we.minutes != null ? `${we.minutes} min` : "";
+  const load = we.isBodyweight ? "BW" : we.weight != null ? `${we.weight} ${unit}` : "";
+  return [`${we.sets} × ${we.reps}`, load].filter(Boolean).join(" · ");
+}
+
+/**
+ * The exercises logged most recently, newest first and de-duplicated — the
+ * Log page's "Recent" shortcut list. Built from the workouts' own snapshots so
+ * it still works for an exercise since deleted from the library.
+ */
+export function recentExercises(workouts: Workout[], limit = 5): WorkoutExercise[] {
+  const sorted = [...workouts].sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+  const seen = new Set<string>();
+  const out: WorkoutExercise[] = [];
+  for (const w of sorted) {
+    for (let i = w.exercises.length - 1; i >= 0; i--) {
+      const e = w.exercises[i];
+      const key = e.exerciseId ?? e.name.trim().toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(e);
+      if (out.length >= limit) return out;
+    }
+  }
+  return out;
+}
+
 // ── range summary for Stats ─────────────────────────────────
 export interface GymSummary {
   /** Days with at least one logged strength set (cardio-only days don't count). */
@@ -120,13 +170,14 @@ export interface GymSummary {
 
 export function gymSummary(workouts: Workout[], isoDays: string[]): GymSummary {
   const inRange = new Set(isoDays);
-  const categorySets: Record<ExerciseCategory, number> = { push: 0, pull: 0, lower: 0, arms: 0, cardio: 0 };
+  const categorySets: Record<ExerciseCategory, number> = { push: 0, pull: 0, lower: 0, arms: 0, cardio: 0, stretching: 0 };
   const perExercise: Record<ExerciseCategory, Map<string, number>> = {
     push: new Map(),
     pull: new Map(),
     lower: new Map(),
     arms: new Map(),
     cardio: new Map(),
+    stretching: new Map(),
   };
   const perCardio = new Map<string, number>();
   const cardio = { sessions: 0, hours: 0, byIntensity: { low: 0, medium: 0, high: 0 } as Record<CardioIntensity, number> };
@@ -151,7 +202,7 @@ export function gymSummary(workouts: Workout[], isoDays: string[]): GymSummary {
   }
 
   const byCategory = {} as GymSummary["byCategory"];
-  for (const c of CATEGORIES) {
+  for (const c of LOG_CATEGORIES) {
     byCategory[c] = [...perExercise[c].entries()].map(([name, sets]) => ({ name, sets })).sort((a, b) => b.sets - a.sets);
   }
   const byExercise = [...perCardio.entries()].map(([name, hours]) => ({ name, hours })).sort((a, b) => b.hours - a.hours);
@@ -162,7 +213,7 @@ export function gymSummary(workouts: Workout[], isoDays: string[]): GymSummary {
 /** Sets per category across a specific set of days (e.g. only closed days). */
 export function categorySetsOnDays(workouts: Workout[], days: string[]): Record<ExerciseCategory, number> {
   const inDays = new Set(days);
-  const r: Record<ExerciseCategory, number> = { push: 0, pull: 0, lower: 0, arms: 0, cardio: 0 };
+  const r: Record<ExerciseCategory, number> = { push: 0, pull: 0, lower: 0, arms: 0, cardio: 0, stretching: 0 };
   for (const w of workouts) {
     if (!inDays.has(w.date)) continue;
     for (const e of w.exercises) if (strengthLogged(e)) r[e.category] += e.sets;

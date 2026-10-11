@@ -25,7 +25,7 @@ export const DEFAULT_SETTINGS: Settings = {
   proteinGoal: 160,
   weekStartsOn: 1,
   weightUnit: "kg",
-  categoryGoals: { push: 9, pull: 9, lower: 9, arms: 6, cardio: 3 },
+  categoryGoals: { push: 9, pull: 9, lower: 9, arms: 6, cardio: 3, stretching: 0 },
 };
 
 type PresetFood = { name: string; category: string; basis: CalorieBasis; calories: number; protein: number; unit?: string };
@@ -195,20 +195,24 @@ const MUSCLE_TO_CATEGORY: Record<string, ExerciseCategory> = {
 /** v7 renamed the catch-all "other" category to "cardio". "arms" is a later
  *  addition but needs no version gate — it's just one more valid literal. */
 function coerceCategory(v: unknown, legacyMuscle?: unknown): ExerciseCategory {
-  if (v === "push" || v === "pull" || v === "lower" || v === "arms" || v === "cardio") return v;
+  if (v === "push" || v === "pull" || v === "lower" || v === "arms" || v === "cardio" || v === "stretching") return v;
   if (v === "other") return "cardio";
   const m = typeof legacyMuscle === "string" ? MUSCLE_TO_CATEGORY[legacyMuscle.toLowerCase()] : undefined;
   return m ?? "cardio";
 }
 function coerceKind(v: unknown): ExerciseKind {
-  return v === "cardio" ? "cardio" : "strength";
+  return v === "cardio" || v === "stretch" ? v : "strength";
 }
 function coerceIntensity(v: unknown): CardioIntensity {
   return v === "low" || v === "high" ? v : "medium";
 }
-/** Cardio always lives in the cardio category, whatever was saved before. */
+/** Cardio and stretching always live in their own category, whatever was saved
+ *  before; strength lifts can't claim either of them. */
 function categoryFor(kind: ExerciseKind, v: unknown, legacyMuscle?: unknown): ExerciseCategory {
-  return kind === "cardio" ? "cardio" : coerceCategory(v, legacyMuscle);
+  if (kind === "cardio") return "cardio";
+  if (kind === "stretch") return "stretching";
+  const c = coerceCategory(v, legacyMuscle);
+  return c === "stretching" ? "push" : c;
 }
 /** Keep only the live categories, carrying a customised pre-v7 "other" goal
  *  onto its replacement, "cardio"; any settings saved before "arms" existed
@@ -225,6 +229,7 @@ function normalizeCategoryGoals(
     lower: num(s.lower) ?? defaults.lower,
     arms: num(s.arms) ?? defaults.arms,
     cardio: num(s.cardio) ?? num(s.other) ?? defaults.cardio,
+    stretching: num(s.stretching) ?? defaults.stretching,
   };
 }
 
@@ -266,6 +271,10 @@ function normalizeWorkoutExercise(we: any): WorkoutExercise {
       hours: coerceHours(we?.hours, we?.minutes),
     };
   }
+  if (kind === "stretch") {
+    const m = Number(we?.minutes);
+    return { ...base, kind: "stretch", minutes: Number.isFinite(m) && m > 0 ? Math.round(m * 10) / 10 : undefined };
+  }
   // Strength (default). Tolerate the legacy shape where `sets` was an array.
   let weight = Number(we?.weight);
   let sets = Number(we?.sets);
@@ -273,12 +282,14 @@ function normalizeWorkoutExercise(we: any): WorkoutExercise {
     weight = Number(we.sets[0]?.weight);
     sets = we.sets.length;
   }
+  const reps = Number(we?.reps);
   return {
     ...base,
     kind: "strength",
     weight: Number.isFinite(weight) && weight > 0 ? weight : undefined,
-    sets: sets === 2 ? 2 : 3,
-    reps: 8,
+    isBodyweight: we?.isBodyweight === true ? true : undefined,
+    sets: Number.isFinite(sets) && sets >= 1 ? Math.min(Math.round(sets), 99) : 3,
+    reps: Number.isFinite(reps) && reps >= 1 ? Math.min(Math.round(reps), 999) : 8,
   };
 }
 

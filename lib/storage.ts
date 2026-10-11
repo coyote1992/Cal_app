@@ -272,8 +272,16 @@ function normalizeWorkoutExercise(we: any): WorkoutExercise {
     };
   }
   if (kind === "stretch") {
-    const m = Number(we?.minutes);
-    return { ...base, kind: "stretch", minutes: Number.isFinite(m) && m > 0 ? Math.round(m * 10) / 10 : undefined };
+    const sets = Number(we?.sets);
+    let seconds = Number(we?.seconds);
+    // Stretching used to be a single duration in minutes: carry it over as one hold.
+    if (!Number.isFinite(seconds) && Number.isFinite(Number(we?.minutes))) seconds = Number(we.minutes) * 60;
+    return {
+      ...base,
+      kind: "stretch",
+      sets: Number.isFinite(sets) && sets >= 1 ? Math.min(Math.round(sets), 99) : 1,
+      seconds: Number.isFinite(seconds) && seconds >= 1 ? Math.min(Math.round(seconds), 3600) : 30,
+    };
   }
   // Strength (default). Tolerate the legacy shape where `sets` was an array.
   let weight = Number(we?.weight);

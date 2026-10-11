@@ -71,7 +71,7 @@ export interface Settings {
 /** Movement pattern the exercise trains; cardio is its own bucket. */
 export type ExerciseCategory = "push" | "pull" | "lower" | "arms" | "cardio" | "stretching";
 /** Strength lifts log sets × reps (+ weight or bodyweight); cardio logs
- *  intensity+hours; stretching logs minutes. */
+ *  intensity+hours; stretching logs sets × seconds. */
 export type ExerciseKind = "strength" | "cardio" | "stretch";
 export type CardioIntensity = "low" | "medium" | "high";
 
@@ -114,11 +114,14 @@ export interface CardioLog extends WorkoutExerciseBase {
   hours?: number;
 }
 
-/** A stretching bout: just a duration in minutes. */
+/** A stretch as performed: `sets` holds of `seconds` each (3 × 15 s = three
+ *  15-second holds). */
 export interface StretchLog extends WorkoutExerciseBase {
   kind: "stretch";
-  /** Duration in MINUTES; undefined until entered. */
-  minutes?: number;
+  /** Number of holds (1+). */
+  sets: number;
+  /** Length of each hold in SECONDS (1+). */
+  seconds: number;
 }
 
 export type WorkoutExercise = StrengthLog | CardioLog | StretchLog;

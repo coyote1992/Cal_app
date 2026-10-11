@@ -9,7 +9,6 @@ import type { ReactNode } from "react";
 import type {
   AppData,
   CalorieBasis,
-  CardioIntensity,
   Entry,
   EntrySource,
   Exercise,
@@ -21,7 +20,8 @@ import type {
   WorkoutExercise,
 } from "@/lib/types";
 import { emptyData, loadData, normalize, saveData } from "@/lib/storage";
-import { lastLogForExercise } from "@/lib/gym";
+import { applyWorkoutPatch } from "@/lib/gym";
+import type { WorkoutExercisePatch } from "@/lib/gym";
 import { computeCalories, isPer100, uid } from "@/lib/util";
 import {
   clearSyncCode,
@@ -54,46 +54,6 @@ export interface ExerciseInput {
   name: string;
   category: ExerciseCategory;
   kind: ExerciseKind;
-}
-
-/** Fields the user can change on a logged exercise (only the relevant ones apply). */
-export interface WorkoutExercisePatch {
-  /** Pass `null` to clear. */
-  weight?: number | null;
-  sets?: number;
-  reps?: number;
-  isBodyweight?: boolean;
-  intensity?: CardioIntensity;
-  /** Cardio duration in hours; `null` clears. */
-  hours?: number | null;
-  /** Stretching duration in minutes; `null` clears. */
-  minutes?: number | null;
-}
-
-const positive = (n: number | null | undefined): n is number => n != null && Number.isFinite(n) && n > 0;
-const wholeAtLeast1 = (n: number, max: number) => Math.min(Math.max(Math.round(n), 1), max);
-
-function applyWorkoutPatch(e: WorkoutExercise, patch: WorkoutExercisePatch): WorkoutExercise {
-  if (e.kind === "strength") {
-    return {
-      ...e,
-      weight: patch.weight !== undefined ? (positive(patch.weight) ? patch.weight : undefined) : e.weight,
-      isBodyweight: patch.isBodyweight !== undefined ? patch.isBodyweight || undefined : e.isBodyweight,
-      sets: patch.sets !== undefined && Number.isFinite(patch.sets) ? wholeAtLeast1(patch.sets, 99) : e.sets,
-      reps: patch.reps !== undefined && Number.isFinite(patch.reps) ? wholeAtLeast1(patch.reps, 999) : e.reps,
-    };
-  }
-  if (e.kind === "stretch") {
-    return {
-      ...e,
-      minutes: patch.minutes !== undefined ? (positive(patch.minutes) ? Math.round(patch.minutes * 10) / 10 : undefined) : e.minutes,
-    };
-  }
-  return {
-    ...e,
-    intensity: patch.intensity ?? e.intensity,
-    hours: patch.hours !== undefined ? (positive(patch.hours) ? Math.round(patch.hours * 100) / 100 : undefined) : e.hours,
-  };
 }
 
 /** Fields of a logged food entry the user can correct in place. */
@@ -139,10 +99,7 @@ interface StoreValue {
   addExercise: (input: ExerciseInput) => Exercise;
   updateExercise: (id: string, patch: ExerciseInput) => void;
   deleteExercise: (id: string) => void;
-  addExerciseToWorkout: (
-    date: string,
-    exercise: { id?: string; name: string; category: ExerciseCategory; kind: ExerciseKind },
-  ) => void;
+  addExerciseToWorkout: (date: string, exercise: WorkoutExercise) => void;
   updateWorkoutExercise: (date: string, workoutExerciseId: string, patch: WorkoutExercisePatch) => void;
   deleteWorkoutExercise: (date: string, workoutExerciseId: string) => void;
   setBodyWeight: (date: string, weight: number | undefined) => void;
@@ -448,58 +405,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setData((d) => ({ ...d, exercises: d.exercises.filter((e) => e.id !== id), updatedAt: Date.now() }));
   }, []);
 
-  // Add an exercise to the day, pre-filling the weight/intensity from the last
-  // time it was logged (progressive-overload nicety).
-  const addExerciseToWorkout = useCallback(
-    (date: string, exercise: { id?: string; name: string; category: ExerciseCategory; kind: ExerciseKind }) => {
-      setData((d) => {
-        const prev = lastLogForExercise(d.workouts, { exerciseId: exercise.id, name: exercise.name }, date);
-        let we: WorkoutExercise;
-        if (exercise.kind === "cardio") {
-          const p = prev && prev.kind === "cardio" ? prev : undefined;
-          we = {
-            id: uid(),
-            exerciseId: exercise.id,
-            name: exercise.name,
-            category: "cardio",
-            kind: "cardio",
-            intensity: p?.intensity ?? "medium",
-            hours: p?.hours,
-          };
-        } else if (exercise.kind === "stretch") {
-          const p = prev && prev.kind === "stretch" ? prev : undefined;
-          we = {
-            id: uid(),
-            exerciseId: exercise.id,
-            name: exercise.name,
-            category: "stretching",
-            kind: "stretch",
-            minutes: p?.minutes,
-          };
-        } else {
-          const p = prev && prev.kind === "strength" ? prev : undefined;
-          we = {
-            id: uid(),
-            exerciseId: exercise.id,
-            name: exercise.name,
-            category: exercise.category,
-            kind: "strength",
-            weight: p?.weight,
-            isBodyweight: p?.isBodyweight,
-            sets: p?.sets ?? 3,
-            reps: p?.reps ?? 8,
-          };
-        }
-        const idx = d.workouts.findIndex((w) => w.date === date);
-        const workouts =
-          idx === -1
-            ? [...d.workouts, { id: uid(), date, exercises: [we], createdAt: Date.now() }]
-            : d.workouts.map((w, i) => (i === idx ? { ...w, exercises: [...w.exercises, we] } : w));
-        return { ...d, workouts, updatedAt: Date.now() };
-      });
-    },
-    [],
-  );
+  // Add an already-built log (see newWorkoutExercise) to the day's workout.
+  const addExerciseToWorkout = useCallback((date: string, we: WorkoutExercise) => {
+    setData((d) => {
+      const idx = d.workouts.findIndex((w) => w.date === date);
+      const workouts =
+        idx === -1
+          ? [...d.workouts, { id: uid(), date, exercises: [we], createdAt: Date.now() }]
+          : d.workouts.map((w, i) => (i === idx ? { ...w, exercises: [...w.exercises, we] } : w));
+      return { ...d, workouts, updatedAt: Date.now() };
+    });
+  }, []);
 
   const updateWorkoutExercise = useCallback((date: string, workoutExerciseId: string, patch: WorkoutExercisePatch) => {
     setData((d) => ({

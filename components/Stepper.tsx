@@ -10,6 +10,7 @@ export default function Stepper({
   onChange,
   min = 1,
   max = 99,
+  step = 1,
   label,
   disabled,
 }: {
@@ -17,6 +18,8 @@ export default function Stepper({
   onChange: (n: number) => void;
   min?: number;
   max?: number;
+  /** How much − / + move the value. */
+  step?: number;
   label: string;
   disabled?: boolean;
 }) {
@@ -33,7 +36,7 @@ export default function Stepper({
     <div className="stepper" role="group" aria-label={label}>
       <span className="stepper-label">{label}</span>
       <div className="stepper-ctl">
-        <button disabled={disabled || value <= min} onClick={() => commit(value - 1)} aria-label={`Fewer ${label.toLowerCase()}`}>
+        <button disabled={disabled || value <= min} onClick={() => commit(value - step)} aria-label={`Fewer ${label.toLowerCase()}`}>
           −
         </button>
         <input
@@ -51,7 +54,7 @@ export default function Stepper({
           onBlur={() => setStr(String(value))}
           aria-label={label}
         />
-        <button disabled={disabled || value >= max} onClick={() => commit(value + 1)} aria-label={`More ${label.toLowerCase()}`}>
+        <button disabled={disabled || value >= max} onClick={() => commit(value + step)} aria-label={`More ${label.toLowerCase()}`}>
           +
         </button>
       </div>

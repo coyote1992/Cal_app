@@ -16,6 +16,7 @@ import type {
   WorkoutExercise,
 } from "./types";
 import { startOfWeek } from "./date";
+import { uid } from "./util";
 
 /** The categories Stats and Settings goals track. */
 export const CATEGORIES: ExerciseCategory[] = ["push", "pull", "lower", "arms", "cardio"];
@@ -59,7 +60,7 @@ export function strengthLogged(we: WorkoutExercise): we is StrengthLog {
   return isStrength(we) && (we.isBodyweight === true || (we.weight != null && we.weight > 0));
 }
 export function stretchLogged(we: WorkoutExercise): we is StretchLog {
-  return isStretch(we) && we.minutes != null && we.minutes > 0;
+  return isStretch(we) && we.sets > 0 && we.seconds > 0;
 }
 export function cardioLogged(we: WorkoutExercise): we is CardioLog {
   return isCardio(we) && we.hours != null && we.hours > 0;
@@ -73,6 +74,75 @@ export function workoutHasContent(w: Workout | undefined): boolean {
 
 export function workoutForDate(workouts: Workout[], iso: string): Workout | undefined {
   return workouts.find((w) => w.date === iso);
+}
+
+/** Fields the user can change on a logged exercise (only the relevant ones apply). */
+export interface WorkoutExercisePatch {
+  /** Pass `null` to clear. */
+  weight?: number | null;
+  sets?: number;
+  /** Reps per set (strength). */
+  reps?: number;
+  isBodyweight?: boolean;
+  intensity?: CardioIntensity;
+  /** Cardio duration in hours; `null` clears. */
+  hours?: number | null;
+  /** Length of each stretch hold, in seconds. */
+  seconds?: number;
+}
+
+const positive = (n: number | null | undefined): n is number => n != null && Number.isFinite(n) && n > 0;
+const whole = (n: number, max: number) => Math.min(Math.max(Math.round(n), 1), max);
+
+export function applyWorkoutPatch(e: WorkoutExercise, patch: WorkoutExercisePatch): WorkoutExercise {
+  if (e.kind === "strength") {
+    return {
+      ...e,
+      weight: patch.weight !== undefined ? (positive(patch.weight) ? patch.weight : undefined) : e.weight,
+      isBodyweight: patch.isBodyweight !== undefined ? patch.isBodyweight || undefined : e.isBodyweight,
+      sets: patch.sets !== undefined && Number.isFinite(patch.sets) ? whole(patch.sets, 99) : e.sets,
+      reps: patch.reps !== undefined && Number.isFinite(patch.reps) ? whole(patch.reps, 999) : e.reps,
+    };
+  }
+  if (e.kind === "stretch") {
+    return {
+      ...e,
+      sets: patch.sets !== undefined && Number.isFinite(patch.sets) ? whole(patch.sets, 99) : e.sets,
+      seconds: patch.seconds !== undefined && Number.isFinite(patch.seconds) ? whole(patch.seconds, 3600) : e.seconds,
+    };
+  }
+  return {
+    ...e,
+    intensity: patch.intensity ?? e.intensity,
+    hours: patch.hours !== undefined ? (positive(patch.hours) ? Math.round(patch.hours * 100) / 100 : undefined) : e.hours,
+  };
+}
+
+/** A fresh log for an exercise, pre-filled from the last time it was logged
+ *  (progressive-overload nicety) or sensible defaults. */
+export function newWorkoutExercise(
+  exercise: { id?: string; name: string; category: ExerciseCategory; kind: ExerciseKind },
+  prev?: WorkoutExercise,
+): WorkoutExercise {
+  const base = { id: uid(), exerciseId: exercise.id, name: exercise.name };
+  if (exercise.kind === "cardio") {
+    const p = prev && prev.kind === "cardio" ? prev : undefined;
+    return { ...base, category: "cardio", kind: "cardio", intensity: p?.intensity ?? "medium", hours: p?.hours };
+  }
+  if (exercise.kind === "stretch") {
+    const p = prev && prev.kind === "stretch" ? prev : undefined;
+    return { ...base, category: "stretching", kind: "stretch", sets: p?.sets ?? 3, seconds: p?.seconds ?? 30 };
+  }
+  const p = prev && prev.kind === "strength" ? prev : undefined;
+  return {
+    ...base,
+    category: exercise.category,
+    kind: "strength",
+    weight: p?.weight,
+    isBodyweight: p?.isBodyweight,
+    sets: p?.sets ?? 3,
+    reps: p?.reps ?? 8,
+  };
 }
 
 /** Sets logged per category for one list of exercises (unentered lifts ignored). */
@@ -123,7 +193,7 @@ export function describeLog(we: WorkoutExercise, unit: string): string {
   if (we.kind === "cardio") {
     return [we.hours != null ? formatHours(we.hours) : "", INTENSITY_LABEL[we.intensity].toLowerCase()].filter(Boolean).join(" · ");
   }
-  if (we.kind === "stretch") return we.minutes != null ? `${we.minutes} min` : "";
+  if (we.kind === "stretch") return `${we.sets} × ${we.seconds} s`;
   const load = we.isBodyweight ? "BW" : we.weight != null ? `${we.weight} ${unit}` : "";
   return [`${we.sets} × ${we.reps}`, load].filter(Boolean).join(" · ");
 }

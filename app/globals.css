@@ -1925,3 +1925,14 @@ input[type="number"] {
 .seg-mini button {
   min-height: 40px;
 }
+
+/* inline add panel under an exercise */
+.adder {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 10px;
+}
+.adder-add {
+  width: 100%;
+}

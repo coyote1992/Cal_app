@@ -2,7 +2,7 @@
 
 // Inline create/edit form for a library exercise — rendered in place inside a
 // category dropdown on the Log page. The category decides the kind of log
-// (sets × reps, cardio hours, or stretching minutes).
+// (sets × reps, cardio hours, or stretching sets × seconds).
 
 import { useState } from "react";
 import type { Exercise, ExerciseCategory } from "@/lib/types";
@@ -59,7 +59,7 @@ export default function ExerciseForm({
           disabled={!name.trim()}
           onClick={() => onSave({ name, category })}
         >
-          {exercise ? "Save" : "Create & add"}
+          {exercise ? "Save" : "Create"}
         </button>
       </div>
       {onDelete && (

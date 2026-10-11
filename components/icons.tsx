@@ -121,3 +121,15 @@ export const IconPulse = (p: P) => (
     <path d="M3 12h4l2-6 4 12 2-6h6" />
   </Svg>
 );
+
+export const IconChevron = (p: P) => (
+  <Svg {...p}>
+    <path d="M6 9l6 6 6-6" />
+  </Svg>
+);
+
+export const IconCheck = (p: P) => (
+  <Svg {...p}>
+    <path d="M5 12.5l4.5 4.5L19 7.5" />
+  </Svg>
+);

@@ -69,9 +69,10 @@ export interface Settings {
 
 // ── Gym ────────────────────────────────────────────────────
 /** Movement pattern the exercise trains; cardio is its own bucket. */
-export type ExerciseCategory = "push" | "pull" | "lower" | "arms" | "cardio";
-/** Strength lifts log weight+sets; cardio logs intensity+time. */
-export type ExerciseKind = "strength" | "cardio";
+export type ExerciseCategory = "push" | "pull" | "lower" | "arms" | "cardio" | "stretching";
+/** Strength lifts log sets × reps (+ weight or bodyweight); cardio logs
+ *  intensity+hours; stretching logs minutes. */
+export type ExerciseKind = "strength" | "cardio" | "stretch";
 export type CardioIntensity = "low" | "medium" | "high";
 
 /** A reusable exercise definition in the library (like Food, but for training). */
@@ -91,15 +92,17 @@ interface WorkoutExerciseBase {
   category: ExerciseCategory;
 }
 
-/** A strength lift as performed: one working weight, a 2-or-3 set count, reps
- *  fixed at 8. Deliberately simple — one entry per exercise per day. */
+/** A strength lift as performed: any number of sets × reps at one working
+ *  weight (or just bodyweight). One entry per exercise per day. */
 export interface StrengthLog extends WorkoutExerciseBase {
   kind: "strength";
-  /** Working weight in the user's unit; undefined until entered. */
+  /** Working weight in the user's unit; undefined until entered. Unused for bodyweight lifts. */
   weight?: number;
-  /** Number of sets (2 or 3). */
+  /** Bodyweight lift (pull-ups, push-ups…): no external weight, counts once added. */
+  isBodyweight?: boolean;
+  /** Number of sets (1+). */
   sets: number;
-  /** Reps per set — fixed at 8. */
+  /** Reps per set (1+). */
   reps: number;
 }
 
@@ -111,7 +114,14 @@ export interface CardioLog extends WorkoutExerciseBase {
   hours?: number;
 }
 
-export type WorkoutExercise = StrengthLog | CardioLog;
+/** A stretching bout: just a duration in minutes. */
+export interface StretchLog extends WorkoutExerciseBase {
+  kind: "stretch";
+  /** Duration in MINUTES; undefined until entered. */
+  minutes?: number;
+}
+
+export type WorkoutExercise = StrengthLog | CardioLog | StretchLog;
 
 /** A gym session on a given day. */
 export interface Workout {

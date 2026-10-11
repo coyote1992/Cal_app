@@ -58,32 +58,52 @@ export interface ExerciseInput {
 
 /** Fields the user can change on a logged exercise (only the relevant ones apply). */
 export interface WorkoutExercisePatch {
-  weight?: number;
+  /** Pass `null` to clear. */
+  weight?: number | null;
   sets?: number;
+  reps?: number;
+  isBodyweight?: boolean;
   intensity?: CardioIntensity;
-  /** Cardio duration in hours. */
-  hours?: number;
+  /** Cardio duration in hours; `null` clears. */
+  hours?: number | null;
+  /** Stretching duration in minutes; `null` clears. */
+  minutes?: number | null;
 }
+
+const positive = (n: number | null | undefined): n is number => n != null && Number.isFinite(n) && n > 0;
+const wholeAtLeast1 = (n: number, max: number) => Math.min(Math.max(Math.round(n), 1), max);
 
 function applyWorkoutPatch(e: WorkoutExercise, patch: WorkoutExercisePatch): WorkoutExercise {
   if (e.kind === "strength") {
     return {
       ...e,
-      weight:
-        patch.weight !== undefined ? (Number.isFinite(patch.weight) && patch.weight! > 0 ? patch.weight : undefined) : e.weight,
-      sets: patch.sets !== undefined ? (patch.sets === 2 ? 2 : 3) : e.sets,
+      weight: patch.weight !== undefined ? (positive(patch.weight) ? patch.weight : undefined) : e.weight,
+      isBodyweight: patch.isBodyweight !== undefined ? patch.isBodyweight || undefined : e.isBodyweight,
+      sets: patch.sets !== undefined && Number.isFinite(patch.sets) ? wholeAtLeast1(patch.sets, 99) : e.sets,
+      reps: patch.reps !== undefined && Number.isFinite(patch.reps) ? wholeAtLeast1(patch.reps, 999) : e.reps,
+    };
+  }
+  if (e.kind === "stretch") {
+    return {
+      ...e,
+      minutes: patch.minutes !== undefined ? (positive(patch.minutes) ? Math.round(patch.minutes * 10) / 10 : undefined) : e.minutes,
     };
   }
   return {
     ...e,
     intensity: patch.intensity ?? e.intensity,
-    hours:
-      patch.hours !== undefined
-        ? Number.isFinite(patch.hours) && patch.hours! > 0
-          ? Math.round(patch.hours! * 100) / 100
-          : undefined
-        : e.hours,
+    hours: patch.hours !== undefined ? (positive(patch.hours) ? Math.round(patch.hours * 100) / 100 : undefined) : e.hours,
   };
+}
+
+/** Fields of a logged food entry the user can correct in place. */
+export interface EntryPatch {
+  name?: string;
+  /** New amount (servings / g / ml). Calories and protein scale with it. */
+  quantity?: number;
+  /** For entries typed in by hand (no saved food): the totals themselves. */
+  calories?: number;
+  protein?: number | null;
 }
 
 export interface EntryInput {
@@ -112,6 +132,7 @@ interface StoreValue {
   deleteFood: (id: string) => void;
   addEntry: (input: EntryInput) => void;
   deleteEntry: (id: string) => void;
+  updateEntry: (id: string, patch: EntryPatch) => void;
   updateSettings: (patch: Partial<Settings>) => void;
   exercises: Exercise[];
   workouts: Workout[];
@@ -144,6 +165,12 @@ interface StoreValue {
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
+
+function categoryOf(input: { category: ExerciseCategory; kind: ExerciseKind }): ExerciseCategory {
+  if (input.kind === "cardio") return "cardio";
+  if (input.kind === "stretch") return "stretching";
+  return input.category === "cardio" || input.category === "stretching" ? "push" : input.category;
+}
 
 function cleanProtein(v: number | undefined): number | undefined {
   return v != null && Number.isFinite(v) && v > 0 ? Math.max(0, Math.round(v)) : undefined;
@@ -348,6 +375,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setData((d) => ({ ...d, entries: d.entries.filter((e) => e.id !== id), updatedAt: Date.now() }));
   }, []);
 
+  // Correct a logged entry in place. A saved-food entry keeps its rate and just
+  // takes a new amount (protein scales with it); a hand-typed one (quick
+  // calories / photo) is a single "serving" whose totals are edited directly.
+  const updateEntry = useCallback((id: string, patch: EntryPatch) => {
+    setData((d) => ({
+      ...d,
+      entries: d.entries.map((e) => {
+        if (e.id !== id) return e;
+        const next = { ...e };
+        if (patch.name !== undefined && patch.name.trim()) next.name = patch.name.trim();
+        if (patch.quantity !== undefined && patch.quantity > 0) {
+          if (e.protein != null && e.quantity > 0) next.protein = Math.round((e.protein * patch.quantity) / e.quantity);
+          next.quantity = patch.quantity;
+          next.calories = computeCalories(e.basis, e.perUnit, patch.quantity);
+        }
+        if (patch.calories !== undefined && patch.calories > 0) {
+          next.perUnit = Math.round(patch.calories);
+          next.calories = computeCalories(e.basis, next.perUnit, next.quantity);
+        }
+        if (patch.protein !== undefined) {
+          next.protein = patch.protein != null && patch.protein > 0 ? Math.round(patch.protein) : undefined;
+        }
+        return next;
+      }),
+      updatedAt: Date.now(),
+    }));
+  }, []);
+
   const updateSettings = useCallback((patch: Partial<Settings>) => {
     setData((d) => ({ ...d, settings: { ...d.settings, ...patch }, updatedAt: Date.now() }));
   }, []);
@@ -368,8 +423,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // ── gym ──────────────────────────────────────────────────
   const addExercise = useCallback((input: ExerciseInput): Exercise => {
-    // Cardio always lives in the cardio category, whatever was picked.
-    const category = input.kind === "cardio" ? "cardio" : input.category;
+    // Cardio and stretching always live in their own category, whatever was picked.
+    const category = categoryOf(input);
     const ex: Exercise = { id: uid(), name: input.name.trim(), category, kind: input.kind, createdAt: Date.now() };
     setData((d) => ({ ...d, exercises: [...d.exercises, ex], updatedAt: Date.now() }));
     return ex;
@@ -380,7 +435,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ...d,
       exercises: d.exercises.map((e) =>
         e.id === id
-          ? { ...e, name: patch.name.trim(), category: patch.kind === "cardio" ? "cardio" : patch.category, kind: patch.kind }
+          ? { ...e, name: patch.name.trim(), category: categoryOf(patch), kind: patch.kind }
           : e,
       ),
       updatedAt: Date.now(),
@@ -406,11 +461,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             id: uid(),
             exerciseId: exercise.id,
             name: exercise.name,
-            // Cardio always lives in the cardio category.
             category: "cardio",
             kind: "cardio",
             intensity: p?.intensity ?? "medium",
             hours: p?.hours,
+          };
+        } else if (exercise.kind === "stretch") {
+          const p = prev && prev.kind === "stretch" ? prev : undefined;
+          we = {
+            id: uid(),
+            exerciseId: exercise.id,
+            name: exercise.name,
+            category: "stretching",
+            kind: "stretch",
+            minutes: p?.minutes,
           };
         } else {
           const p = prev && prev.kind === "strength" ? prev : undefined;
@@ -421,8 +485,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             category: exercise.category,
             kind: "strength",
             weight: p?.weight,
+            isBodyweight: p?.isBodyweight,
             sets: p?.sets ?? 3,
-            reps: 8,
+            reps: p?.reps ?? 8,
           };
         }
         const idx = d.workouts.findIndex((w) => w.date === date);
@@ -543,6 +608,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     deleteFood,
     addEntry,
     deleteEntry,
+    updateEntry,
     updateSettings,
     exercises: data.exercises,
     workouts: data.workouts,
